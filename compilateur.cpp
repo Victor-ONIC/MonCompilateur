@@ -18,108 +18,154 @@
 // Build with "make compilateur"
 
 
+
 #include <string>
 #include <iostream>
 #include <cstdlib>
 
-using namespace std;
+// Current character.
+char current;
 
-char current;				// Current car	
-
-void ReadChar(void){		// Read character and skip spaces until 
-				// non space character is read
-	while(cin.get(current) && (current==' '||current=='\t'||current=='\n'))
-	   	cin.get(current);
+// Read character and skip spaces until non space character is read.
+void ReadChar()
+{
+	while (std::cin.get(current) && (current == ' ' || current == '\t' || current == '\n'))
+	{
+	   	std::cin.get(current);
+	}
 }
 
-void Error(string s){
-	cerr<< s << endl;
+// Cette fonction affiche un message dans la sortie d'erreur et quitte
+// le programme, laissant la compilatiion inachevée.
+void Error(std::string message)
+{
+	std::cerr << message << std::endl;
 	exit(-1);
 }
 
-// ArithmeticExpression := Term {AdditiveOperator Term}
-// Term := Digit | "(" ArithmeticExpression ")"
-// AdditiveOperator := "+" | "-"
-// Digit := "0"|"1"|"2"|"3"|"4"|"5"|"6"|"7"|"8"|"9"
 
-	
-void AdditiveOperator(void){
-	if(current=='+'||current=='-')
-		ReadChar();
+
+//////////////////////////////////////////////////////////////////////////
+// GRAMMAIRE DU LANGAGE
+
+// Digit := "0"|"1"|"2"|"3"|"4"|"5"|"6"|"7"|"8"|"9"
+void Digit();
+
+// AdditiveOperator := "+" | "-"
+void AdditiveOperator();
+
+// Term := Digit | "(" ArithmeticExpression ")"
+void Term();
+
+// ArithmeticExpression := Term {AdditiveOperator Term}
+void ArithmeticExpression();
+
+
+
+void Digit()
+{
+	if (current < '0' || current > '9')
+	{
+		Error("Digit: Chiffre attendu.");  // Digit expected.
+	}
 	else
-		Error("Opérateur additif attendu");	   // Additive operator expected
-}
-		
-void Digit(void){
-	if((current<'0')||(current>'9'))
-		Error("Chiffre attendu");		   // Digit expected
-	else{
-		cout << "\tpush $"<<current<<endl;
+	{
+		std::cout << "\tpush\t$" << current << std::endl;
 		ReadChar();
 	}
 }
 
-void ArithmeticExpression(void);			// Called by Term() and calls Term()
+void AdditiveOperator()
+{
+	if (current == '+' || current == '-')
+	{
+		ReadChar();
+	}
+	else
+	{
+		Error("AdditiveOperator: Opérateur additif attendu.");  // Additive operator expected.
+	}
+}
 
-void Term(void){
-	if(current=='('){
+void Term()
+{
+	if (current == '(')
+	{
 		ReadChar();
 		ArithmeticExpression();
-		if(current!=')')
-			Error("')' était attendu");		// ")" expected
+		if (current != ')')
+		{
+			Error("Term: ')' était attendu.");  // Après une expression on attend ')'.
+		}
 		else
+		{
 			ReadChar();
+		}
 	}
-	else 
-		if (current>='0' && current <='9')
+	else
+	{
+		if (current >= '0' && current <= '9')
+		{
 			Digit();
-	     	else
-			Error("'(' ou chiffre attendu");
+		}
+	    else
+		{
+			Error("Term: '(' ou chiffre attendu.");
+		}
+	}
 }
 
-void ArithmeticExpression(void){
+void ArithmeticExpression()
+{
 	char adop;
 	Term();
-	while(current=='+'||current=='-'){
-		adop=current;		// Save operator in local variable
+	while (current == '+' || current == '-')
+	{
+		// Save operator in local variable.
+		adop = current;  
+
 		AdditiveOperator();
 		Term();
-		cout << "\tpop %rbx"<<endl;	// get first operand
-		cout << "\tpop %rax"<<endl;	// get second operand
-		if(adop=='+')
-			cout << "\taddq	%rbx, %rax"<<endl;	// add both operands
-		else
-			cout << "\tsubq	%rbx, %rax"<<endl;	// substract both operands
-		cout << "\tpush %rax"<<endl;			// store result
-	}
 
+		std::cout << "\tpop\t\t%rbx" << std::endl;  // Get first operand.
+		std::cout << "\tpop\t\t%rax" << std::endl;  // Get second operand.
+
+		if(adop == '+')
+		{
+			std::cout << "\taddq\t%rbx, %rax" << std::endl;  // Add both operands.
+		}
+		else
+		{
+			std::cout << "\tsubq\t%rbx, %rax" << std::endl;  // Substract both operands.
+		}
+
+		std::cout << "\tpush\t%rax" << std::endl;  // Store result.
+	}
 }
 
-int main(void){	// First version : Source code on standard input and assembly code on standard output
-	// Header for gcc assembler / linker
-	cout << "\t\t\t# This code was produced by the CERI Compiler"<<endl;
-	cout << "\t.text\t\t# The following lines contain the program"<<endl;
-	cout << "\t.globl main\t# The main function must be visible from outside"<<endl;
-	cout << "main:\t\t\t# The main function body :"<<endl;
-	cout << "\tmovq %rsp, %rbp\t# Save the position of the stack's top"<<endl;
+// First version : Source code on standard input and assembly code on standard output.
+int main()
+{
+	// Header for gcc assembler / linker.
+	std::cout << "# This code was produced by the CERI Compiler.\n"             	      << std::endl;
+	std::cout << "\t.text\t\t\t\t\t# The following lines contain the program."            << std::endl;
+	std::cout << "\t.globl main\t\t\t\t# The main function must be visible from outside." << std::endl;
+	std::cout << "main:\t\t\t\t\t\t# The main function body:"                             << std::endl;
+	std::cout << "\tmovq\t%rsp, %rbp\t\t# Save the position of the top of the stack."     << std::endl;
 
-	// Let's proceed to the analysis and code production
+	// Let's proceed to the analysis and code production.
 	ReadChar();
 	ArithmeticExpression();
 	ReadChar();
-	// Trailer for the gcc assembler / linker
-	cout << "\tmovq %rbp, %rsp\t\t# Restore the position of the stack's top"<<endl;
-	cout << "\tret\t\t\t# Return from main function"<<endl;
-	if(cin.get(current)){
-		cerr <<"Caractères en trop à la fin du programme : ["<<current<<"]";
-		Error("."); // unexpected characters at the end of program
+
+	// Trailer for the gcc assembler / linker.
+	std::cout << "\tmovq\t%rbp, %rsp\t\t# Restore the position of the top of the stack." << std::endl;
+	std::cout << "\tret\t\t\t\t\t\t# Return from main function."                         << std::endl;
+
+	// Unexpected characters at the end of program.
+	if(std::cin.get(current))
+	{
+		std::cerr << "Caractères en trop à la fin du programme : [" << current << "]";
+		Error(".");  
 	}
-
 }
-		
-			
-
-
-
-
-
