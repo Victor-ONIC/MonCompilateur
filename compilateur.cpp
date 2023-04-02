@@ -27,131 +27,123 @@
 char current;
 
 // Read character and skip spaces until non space character is read.
-void ReadChar()
-{
-	while (std::cin.get(current) && (current == ' ' || current == '\t' || current == '\n'))
-	{
+void ReadChar() {
+	while (std::cin.get(current) && (current == ' ' || current == '\t' || current == '\n')) {
 	   	std::cin.get(current);
 	}
 }
 
 // Cette fonction affiche un message dans la sortie d'erreur et quitte
 // le programme, laissant la compilatiion inachevée.
-void Error(std::string message)
-{
+void Error(std::string message) {
 	std::cerr << message << std::endl;
 	exit(-1);
 }
 
-
-
-//////////////////////////////////////////////////////////////////////////
 // GRAMMAIRE DU LANGAGE
+// <Digit> ::= "0" .. "9"
+// <AdditiveOperator> ::= "+" | "-"
+// <Term> ::= <Digit> | "(" <ArithmeticExpression> ")"
+// <ArithmeticExpression> ::= <Term> { <AdditiveOperator> <Term> }
+// <Expression> ::= <ArithmeticExpression> | <ArithmeticExpression> <RelationalOperator> <ArithmeticExpression>
+// <RelationalOperator> ::= "=" | "<>" | "<" | "<=" | ">=" | ">"
 
-// Digit := "0"|"1"|"2"|"3"|"4"|"5"|"6"|"7"|"8"|"9"
-void Digit();
-
-// AdditiveOperator := "+" | "-"
-void AdditiveOperator();
-
-// Term := Digit | "(" ArithmeticExpression ")"
-void Term();
-
-// ArithmeticExpression := Term {AdditiveOperator Term}
-void ArithmeticExpression();
-
-
-
-void Digit()
-{
-	if (current < '0' || current > '9')
-	{
-		Error("Digit: Chiffre attendu.");  // Digit expected.
-	}
-	else
-	{
-		std::cout << "\tpush\t$" << current << std::endl;
+// <Digit> ::= "0" | .. | "9"
+void Digit() {
+	if (current >= '0' & current <= '9') {
+		std::cout << "push $" << current << std::endl;  // lire un chiffre => l'empiler
 		ReadChar();
+	} else {
+		Error("Digit: Chiffre attendu. ('1', ..., '9')");
 	}
 }
 
-void AdditiveOperator()
-{
-	if (current == '+' || current == '-')
-	{
+// <AdditiveOperator> ::= "+" | "-"
+void AdditiveOperator() {
+	if (current == '+' || current == '-') {
 		ReadChar();
 	}
-	else
-	{
-		Error("AdditiveOperator: Opérateur additif attendu.");  // Additive operator expected.
+	else {
+		Error("AdditiveOperator: Opérateur additif attendu. ('+', '-')");
 	}
 }
 
-void Term()
-{
-	if (current == '(')
-	{
+// <Term> ::= <Digit> | "(" <ArithmeticExpression> ")"
+void ArithmeticExpression();  // Déclaration.
+void Term() {
+	if (current >= '0' && current <= '9') {
+		Digit();
+	}
+	else if (current == '(') {
 		ReadChar();
 		ArithmeticExpression();
-		if (current != ')')
-		{
-			Error("Term: ')' était attendu.");  // Après une expression on attend ')'.
-		}
-		else
-		{
+		if (current == ')')
 			ReadChar();
-		}
+		else
+			Error("Term: ')' était attendu.");
 	}
-	else
-	{
-		if (current >= '0' && current <= '9')
-		{
-			Digit();
-		}
-	    else
-		{
-			Error("Term: '(' ou chiffre attendu.");
-		}
+	else {
+		Error("Term: '(' était attendu.");
 	}
 }
 
-void ArithmeticExpression()
-{
-	char adop;
+// <ArithmeticExpression> ::= <Term> { <AdditiveOperator> <Term> }
+void ArithmeticExpression() {
+	char op;
+
 	Term();
-	while (current == '+' || current == '-')
-	{
-		// Save operator in local variable.
-		adop = current;  
+	while (current == '+' || current == '-') {
+		op = current;  // On sauvegarde l'opérateur utilisé.
 
 		AdditiveOperator();
 		Term();
 
-		std::cout << "\tpop\t\t%rbx" << std::endl;  // Get first operand.
-		std::cout << "\tpop\t\t%rax" << std::endl;  // Get second operand.
+		std::cout << "pop %rbx" << std::endl;  // Opérande 1.
+		std::cout << "pop %rax" << std::endl;  // Opérande 2.
 
-		if(adop == '+')
-		{
-			std::cout << "\taddq\t%rbx, %rax" << std::endl;  // Add both operands.
-		}
-		else
-		{
-			std::cout << "\tsubq\t%rbx, %rax" << std::endl;  // Substract both operands.
+		if (op == '+') {
+			std::cout << "addq %rbx, %rax" << std::endl;  // Faire la somme.
+		} else {
+			std::cout << "subq %rbx, %rax" << std::endl;  // Faire la différence.
 		}
 
-		std::cout << "\tpush\t%rax" << std::endl;  // Store result.
+		std::cout << "push %rax" << std::endl;  // Stocker le résultat.
 	}
 }
 
+// <RelationalOperator> ::= "=" | "<>" | "<" | "<=" | ">=" | ">"
+void RelationalOperator() {
+	char prev = current;
+	ReadChar();
+
+	if (current == '=' ||
+		current == '<' ||
+		current == '>' ||
+		(prev == '<' && current == '>') ||
+		(prev == '<' && current == '=') ||
+		(prev == '>' && current == '=')) {
+			ReadChar();
+	} else {
+		Error("RelationalOperator: opérateur attendu ('=', '<>', '<', '>', '<=', '>=')");
+	}
+}
+
+// <Expression> ::= <ArithmeticExpression> | <ArithmeticExpression> <RelationalOperator> <ArithmeticExpression>
+void Expression() {
+	ArithmeticExpression();
+	// ???
+}
+
+
+
 // First version : Source code on standard input and assembly code on standard output.
-int main()
-{
+int main() {
 	// Header for gcc assembler / linker.
-	std::cout << "# This code was produced by the CERI Compiler.\n"             	      << std::endl;
-	std::cout << "\t.text\t\t\t\t\t# The following lines contain the program."            << std::endl;
-	std::cout << "\t.globl main\t\t\t\t# The main function must be visible from outside." << std::endl;
-	std::cout << "main:\t\t\t\t\t\t# The main function body:"                             << std::endl;
-	std::cout << "\tmovq\t%rsp, %rbp\t\t# Save the position of the top of the stack."     << std::endl;
+	std::cout << "# This code was produced by the CERI Compiler.\n" << std::endl;
+	std::cout << ".text # The following lines contain the program." << std::endl;
+	std::cout << ".globl main # The main function must be visible from outside." << std::endl;
+	std::cout << "main: # The main function body:" << std::endl;
+	std::cout << "movq %rsp, %rbp # Save the position of the top of the stack." << std::endl;
 
 	// Let's proceed to the analysis and code production.
 	ReadChar();
@@ -159,12 +151,11 @@ int main()
 	ReadChar();
 
 	// Trailer for the gcc assembler / linker.
-	std::cout << "\tmovq\t%rbp, %rsp\t\t# Restore the position of the top of the stack." << std::endl;
-	std::cout << "\tret\t\t\t\t\t\t# Return from main function."                         << std::endl;
+	std::cout << "movq %rbp, %rsp # Restore the position of the top of the stack." << std::endl;
+	std::cout << "ret # Return from main function." << std::endl;
 
 	// Unexpected characters at the end of program.
-	if(std::cin.get(current))
-	{
+	if (std::cin.get(current)) {
 		std::cerr << "Caractères en trop à la fin du programme : [" << current << "]";
 		Error(".");  
 	}
