@@ -13,7 +13,7 @@
 //  GNU General Public License for more details.
 //  
 //  You should have received a copy of the GNU General Public License
-//  along with this program.  If not, see <https://www.gnu.org/licenses/>.
+//  along with this program.  While not, see <https://www.gnu.org/licenses/>.
 
 // Build with "make compilateur"
 
@@ -38,7 +38,7 @@ TOKEN current;				// Current token
 FlexLexer* lexer = new yyFlexLexer; // This is the flex tokeniser
 // tokens can be read using lexer->yylex()
 // lexer->yylex() returns the type of the lexicon entry (see enum TOKEN in tokeniser.h)
-// and lexer->YYText() returns the lexicon entry as a string
+// and lexer->YYText() returns the lexicon entry as a char*
 
 	
 set<string> DeclaredVariables;
@@ -58,7 +58,7 @@ void Error(string s){
 // Program := [DeclarationPart] StatementPart
 // DeclarationPart := "[" Letter {"," Letter} "]"
 // StatementPart := Statement {";" Statement} "."
-// Statement := AssignementStatement
+// *****Statement := AssignementStatement*****
 // AssignementStatement := Letter "=" Expression
 
 // Expression := SimpleExpression [RelationalOperator SimpleExpression]
@@ -72,7 +72,13 @@ void Error(string s){
 // RelationalOperator := "==" | "!=" | "<" | ">" | "<=" | ">="  
 // Digit := "0"|"1"|"2"|"3"|"4"|"5"|"6"|"7"|"8"|"9"
 // Letter := "a"|...|"z"
-	
+
+// Statement := AssignementStatement | IfStatement | WhileStatement | ForStatement | BlockStatement
+// IfStatement := "IF" Expression "THEN" Statement [ "ELSE" Statement ]
+// WhileStatement := "WHILE" Expression "DO" Statement
+// ForStatement := "FOR" AssignementStatement "TO" Expression "DO" Statement
+// BlockStatement := "BEGIN" Statement { ";" Statement } "END"
+
 		
 void Identifier(void){
 	cout << "\tpush "<<lexer->YYText()<<endl;
@@ -244,6 +250,7 @@ OPREL RelationalOperator(void){
 
 // Expression := SimpleExpression [RelationalOperator SimpleExpression]
 void Expression(void){
+	// Produit le code pour calculer l'expression et placer au sommet de la pile le résultat.
 	OPREL oprel;
 	SimpleExpression();
 	if(current==RELOP){
@@ -276,7 +283,8 @@ void Expression(void){
 		}
 		cout << "\tpush $0\t\t# False"<<endl;
 		cout << "\tjmp Suite"<<TagNumber<<endl;
-		cout << "Vrai"<<TagNumber<<":\tpush $0xFFFFFFFFFFFFFFFF\t\t# True"<<endl;	
+		cout << "Vrai"<<TagNumber<<":" << endl;
+		cout << "\tpush $0xFFFFFFFFFFFFFFFF\t\t# True"<<endl;	
 		cout << "Suite"<<TagNumber<<":"<<endl;
 	}
 }
@@ -299,9 +307,102 @@ void AssignementStatement(void){
 	cout << "\tpop "<<variable<<endl;
 }
 
-// Statement := AssignementStatement
+void Statement(void);
+
+// IfStatement := "IF" Expression "THEN" Statement [ "ELSE" Statement ]
+void IfStatement() {
+	// Sauvegarder le bon numéro d'étiquette (attention récursivité !!!).
+	int nb = ++TagNumber;
+
+	if (current != KEYWORD) {
+		Error("IfStatement: KEYWORD attendu!");
+	}
+
+	if (strcmp("IF", lexer->YYText()) != 0) {  // != IF
+		Error("IfStatement: IF keyword attendu!");
+	}
+
+	current = (TOKEN)lexer->yylex();  // lire IF
+	Expression();
+	cout << "\tpop %rax" << endl;
+	cout << "\tcmpq $0, %rax" << endl;
+	cout << "\tje Else" << nb << endl;
+
+	if (current != KEYWORD) {
+		Error("IfStatement: KEYWORD attendu");
+	} else if (strcmp("THEN", lexer->YYText()) != 0) {  // != "THEN"
+		Error("IfStatement: THEN keyword attendu!");
+	}
+
+	current = (TOKEN)lexer->yylex();  // lire THEN
+	Statement();  // IF récursif possible grâce à cette ligne
+	cout << "\tjmp Endif" << nb << endl;
+
+	// ELSE optionnel (=> pas d'erreur)
+	cout << "Else" << nb << ":" << endl;
+	if (current == KEYWORD && strcmp("ELSE", lexer->YYText()) == 0) {  // = ELSE
+		current = (TOKEN)lexer->yylex();  // lire ELSE
+		Statement();
+	}
+
+	cout << "Endif" << nb << ":" << endl;
+}
+
+// WhileStatement := "WHILE" Expression "DO" Statement
+void WhileStatement() {
+	int nb = ++TagNumber;
+
+	if (current != KEYWORD) {
+		Error("WhileStatement: KEYWORD attendu!");
+	}
+
+	if (strcmp("WHILE", lexer->YYText()) != 0) {  // != WHILE
+		Error("WhileStatement: WHILE keyword attendu!");
+	}
+
+	current = (TOKEN)lexer->yylex();  // lire WHILE
+	cout << "TestWhile" << nb << ":" << endl;
+	Expression();
+	cout << "\tpop %rax" << endl;
+	cout << "\tcmpq $0, %rax" << endl;
+	cout << "\tje FinWhile" << nb << endl;
+
+	if (current != KEYWORD) {
+		Error("WhileStatement: KEYWORD attendu");
+	} else if (strcmp("DO", lexer->YYText()) != 0) {  // != "DO"
+		Error("WhileStatement: DO keyword attendu!");
+	}
+
+	current = (TOKEN)lexer->yylex();  // lire DO
+	Statement();
+	cout << "\tjmp TestWhile" << nb << endl;
+
+	cout << "FinWhile" << nb << ":" << endl;
+}
+
+void ForStatement() {}
+
+void BlockStatement() {
+	// BEGIN ... END
+}
+
+// Statement := AssignementStatement | IfStatement | WhileStatement | ForStatement | BlockStatement
 void Statement(void){
-	AssignementStatement();
+	// Une instruction peut être 4 instructions différentes.
+	// On a plusieurs possibilités maintenant.
+	if (current == ID) {
+		AssignementStatement();
+	} else {
+		if (current == KEYWORD) {
+			if (strcmp("IF", lexer->YYText()) == 0) {  // = IF
+				IfStatement();
+			} else if (strcmp("WHILE", lexer->YYText()) == 0) {  // = WHILE
+				WhileStatement();
+			}
+		} else {
+			Error("Statement: ID ou KEYWORD attendu!");
+		}
+	}
 }
 
 // StatementPart := Statement {";" Statement} "."
@@ -342,3 +443,40 @@ int main(void){	// First version : Source code on standard input and assembly co
 	}
 
 }
+
+
+/*
+
+Notes:
+
+Tester:
+	make compilateur (compiler le compilateur)
+	make (lancer la compilation sur le fichier test.p)
+	ddd ./test
+
+Penser à mettre à jour le tokeniser pour les nouvelles unités lexicales.
+Lorsqu'il y a des nouveaux symboles terminaux.
+
+Current contient un TOKEN, pas un char ou un string.
+
+Génération du code de IF
+	 code expression
+	pop %rax
+	cmp $0, %rax
+	je ElseXXX
+	 code then
+	jmp EndifXXX
+	 (code else)
+Si pas de ELSE, on aura deux étiquettes qui pointent vers la même adresse.
+Ce n'est pas un problème.
+
+
+Questions:
+
+Comment lit-on un caractère ?
+lexer->yylex() donne le TOKEN et avance la tête de lecture au prochain token
+lexer->YYText() donne un cstring
+
+Expression VS Statement (Expression VS Instruction) ?
+
+*/

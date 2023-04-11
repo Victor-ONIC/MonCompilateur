@@ -18,9 +18,9 @@
 #include <iostream>
 
 using namespace std;
-
-// Déclarations, l'ordre n'a pas d'importance.
 %}
+
+
 
 %option noyywrap
 %option c++
@@ -36,15 +36,19 @@ addop	(\+|\-|\|\|)
 mulop	(\*|\/|%|\&\&)
 relop	(\<|\>|"=="|\<=|\>=|!=)
 unknown [^\"A-Za-z0-9 \n\r\t\(\)\<\>\=\!\%\&\|\}\-\;\.]+
+keyword ("IF"|"THEN"|"ELSE"|"WHILE"|"DO")
 
-// Consécutives: l'ordre importe.
+
+
 %%
+
+
 
 {addop}		return ADDOP;
 {mulop}		return MULOP;
 {relop}		return RELOP;
 {number}	return NUMBER;
-// Mettre {keyword} ici, avant {id} !
+{keyword}	return KEYWORD;
 {id}		return ID;
 {stringconst}	return STRINGCONST;
 "["		return RBRACKET;
@@ -72,4 +76,8 @@ unknown [^\"A-Za-z0-9 \n\r\t\(\)\<\>\=\!\%\&\|\}\-\;\.]+
 
 {unknown}	return UNKNOWN;
 
+
+
 %%
+
+

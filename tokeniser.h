@@ -1,5 +1,6 @@
 // tokeniser.h : shared definition for tokeniser.l and compilateur.cpp
 
+// Les valeurs de FEOF à KEYWORD sont accessibles globalement.
 enum TOKEN {
     FEOF,
     UNKNOWN,
@@ -17,5 +18,6 @@ enum TOKEN {
     MULOP,
     RELOP,
     NOT,
-    ASSIGN
+    ASSIGN,
+    KEYWORD     // ajouté TP3
 };
