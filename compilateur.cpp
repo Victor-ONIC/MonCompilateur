@@ -1,22 +1,11 @@
-//  A compiler from a very simple Pascal-like structured language LL(k)
-//  to 64-bit 80x86 Assembly langage
-//  Copyright (C) 2019 Pierre Jourlin
-//
-//  This program is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-//  
-//  This program is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-//  GNU General Public License for more details.
-//  
-//  You should have received a copy of the GNU General Public License
-//  along with this program.  While not, see <https://www.gnu.org/licenses/>.
+/*
+
+On lit le fichier source token par token.
+
+*/
+
 
 // Build with "make compilateur"
-
 
 #include <string>
 #include <iostream>
@@ -26,32 +15,32 @@
 #include "tokeniser.h"
 #include <cstring>
 
-using namespace std;
+enum OPREL { EQU, DIFF, INF, SUP, INFE, SUPE, WTFR };
+enum OPADD { ADD, SUB, OR, WTFA };
+enum OPMUL { MUL, DIV, MOD, AND, WTFM };
 
-enum OPREL {EQU, DIFF, INF, SUP, INFE, SUPE, WTFR};
-enum OPADD {ADD, SUB, OR, WTFA};
-enum OPMUL {MUL, DIV, MOD, AND ,WTFM};
+// Type du token actuellement sous la tête de lecture (id, keyword, ...).
+TOKEN current;
 
-TOKEN current;				// Current token
+// lexer->yylex() donne le type du token, et avance la tête de lecture.
+// lexer->YYText() donne le texte associé au token lu sous forme d'un c-string.
+FlexLexer* lexer = new yyFlexLexer;
 
+// Stocke les noms des variables du programme Pascal.
+std::set<std::string> DeclaredVariables;
 
-FlexLexer* lexer = new yyFlexLexer; // This is the flex tokeniser
-// tokens can be read using lexer->yylex()
-// lexer->yylex() returns the type of the lexicon entry (see enum TOKEN in tokeniser.h)
-// and lexer->YYText() returns the lexicon entry as a char*
+// Valeur incrémentale qui permet d'avoir plusieurs étiquettes du même nom.
+unsigned long TagNumber = 0;
 
-	
-set<string> DeclaredVariables;
-unsigned long TagNumber=0;
-
-bool IsDeclared(const char *id){
-	return DeclaredVariables.find(id)!=DeclaredVariables.end();
+/// Retourne vrai si la variable a déjà été déclarée.
+bool IsDeclared(const char *id) {
+	return DeclaredVariables.find(id) != DeclaredVariables.end();
 }
 
-
-void Error(string s){
-	cerr << "Ligne n°"<<lexer->lineno()<<", lu : '"<<lexer->YYText()<<"'("<<current<<"), mais ";
-	cerr<< s << endl;
+/// Arrêt total du programme, laissant la compilation inachevée.
+void Error(std::string s){
+	std::cerr << "Ligne n°" << lexer->lineno() << ", lu: '" << lexer->YYText() << "' (" << current << "), mais... " << std::endl;
+	std::cerr << s << std::endl;
 	exit(-1);
 }
 
@@ -81,12 +70,12 @@ void Error(string s){
 
 		
 void Identifier(void){
-	cout << "\tpush "<<lexer->YYText()<<endl;
+	std::cout << "\tpush "<<lexer->YYText()<<std::endl;
 	current=(TOKEN) lexer->yylex();
 }
 
 void Number(void){
-	cout <<"\tpush $"<<atoi(lexer->YYText())<<endl;
+	std::cout <<"\tpush $"<<atoi(lexer->YYText())<<std::endl;
 	current=(TOKEN) lexer->yylex();
 }
 
@@ -134,26 +123,26 @@ void Term(void){
 	while(current==MULOP){
 		mulop=MultiplicativeOperator();		// Save operator in local variable
 		Factor();
-		cout << "\tpop %rbx"<<endl;	// get first operand
-		cout << "\tpop %rax"<<endl;	// get second operand
+		std::cout << "\tpop %rbx"<<std::endl;	// get first operand
+		std::cout << "\tpop %rax"<<std::endl;	// get second operand
 		switch(mulop){
 			case AND:
-				cout << "\tmulq	%rbx"<<endl;	// a * b -> %rdx:%rax
-				cout << "\tpush %rax\t# AND"<<endl;	// store result
+				std::cout << "\tmulq	%rbx"<<std::endl;	// a * b -> %rdx:%rax
+				std::cout << "\tpush %rax\t# AND"<<std::endl;	// store result
 				break;
 			case MUL:
-				cout << "\tmulq	%rbx"<<endl;	// a * b -> %rdx:%rax
-				cout << "\tpush %rax\t# MUL"<<endl;	// store result
+				std::cout << "\tmulq	%rbx"<<std::endl;	// a * b -> %rdx:%rax
+				std::cout << "\tpush %rax\t# MUL"<<std::endl;	// store result
 				break;
 			case DIV:
-				cout << "\tmovq $0, %rdx"<<endl; 	// Higher part of numerator  
-				cout << "\tdiv %rbx"<<endl;			// quotient goes to %rax
-				cout << "\tpush %rax\t# DIV"<<endl;		// store result
+				std::cout << "\tmovq $0, %rdx"<<std::endl; 	// Higher part of numerator  
+				std::cout << "\tdiv %rbx"<<std::endl;			// quotient goes to %rax
+				std::cout << "\tpush %rax\t# DIV"<<std::endl;		// store result
 				break;
 			case MOD:
-				cout << "\tmovq $0, %rdx"<<endl; 	// Higher part of numerator  
-				cout << "\tdiv %rbx"<<endl;			// remainder goes to %rdx
-				cout << "\tpush %rdx\t# MOD"<<endl;		// store result
+				std::cout << "\tmovq $0, %rdx"<<std::endl; 	// Higher part of numerator  
+				std::cout << "\tdiv %rbx"<<std::endl;			// remainder goes to %rdx
+				std::cout << "\tpush %rdx\t# MOD"<<std::endl;		// store result
 				break;
 			default:
 				Error("opérateur multiplicatif attendu");
@@ -182,22 +171,22 @@ void SimpleExpression(void){
 	while(current==ADDOP){
 		adop=AdditiveOperator();		// Save operator in local variable
 		Term();
-		cout << "\tpop %rbx"<<endl;	// get first operand
-		cout << "\tpop %rax"<<endl;	// get second operand
+		std::cout << "\tpop %rbx"<<std::endl;	// get first operand
+		std::cout << "\tpop %rax"<<std::endl;	// get second operand
 		switch(adop){
 			case OR:
-				cout << "\taddq	%rbx, %rax\t# OR"<<endl;// operand1 OR operand2
+				std::cout << "\taddq	%rbx, %rax\t# OR"<<std::endl;// operand1 OR operand2
 				break;			
 			case ADD:
-				cout << "\taddq	%rbx, %rax\t# ADD"<<endl;	// add both operands
+				std::cout << "\taddq	%rbx, %rax\t# ADD"<<std::endl;	// add both operands
 				break;			
 			case SUB:	
-				cout << "\tsubq	%rbx, %rax\t# SUB"<<endl;	// substract both operands
+				std::cout << "\tsubq	%rbx, %rax\t# SUB"<<std::endl;	// substract both operands
 				break;
 			default:
 				Error("opérateur additif inconnu");
 		}
-		cout << "\tpush %rax"<<endl;			// store result
+		std::cout << "\tpush %rax"<<std::endl;			// store result
 	}
 
 }
@@ -206,20 +195,20 @@ void SimpleExpression(void){
 void DeclarationPart(void){
 	if(current!=RBRACKET)
 		Error("caractère '[' attendu");
-	cout << "\t.data"<<endl;
-	cout << "\t.align 8"<<endl;
+	std::cout << "\t.data"<<std::endl;
+	std::cout << "\t.align 8"<<std::endl;
 	
 	current=(TOKEN) lexer->yylex();
 	if(current!=ID)
 		Error("Un identificater était attendu");
-	cout << lexer->YYText() << ":\t.quad 0"<<endl;
+	std::cout << lexer->YYText() << ":\t.quad 0"<<std::endl;
 	DeclaredVariables.insert(lexer->YYText());
 	current=(TOKEN) lexer->yylex();
 	while(current==COMMA){
 		current=(TOKEN) lexer->yylex();
 		if(current!=ID)
 			Error("Un identificateur était attendu");
-		cout << lexer->YYText() << ":\t.quad 0"<<endl;
+		std::cout << lexer->YYText() << ":\t.quad 0"<<std::endl;
 		DeclaredVariables.insert(lexer->YYText());
 		current=(TOKEN) lexer->yylex();
 	}
@@ -256,46 +245,46 @@ void Expression(void){
 	if(current==RELOP){
 		oprel=RelationalOperator();
 		SimpleExpression();
-		cout << "\tpop %rax"<<endl;
-		cout << "\tpop %rbx"<<endl;
-		cout << "\tcmpq %rax, %rbx"<<endl;
+		std::cout << "\tpop %rax"<<std::endl;
+		std::cout << "\tpop %rbx"<<std::endl;
+		std::cout << "\tcmpq %rax, %rbx"<<std::endl;
 		switch(oprel){
 			case EQU:
-				cout << "\tje Vrai"<<++TagNumber<<"\t# If equal"<<endl;
+				std::cout << "\tje Vrai"<<++TagNumber<<"\t# If equal"<<std::endl;
 				break;
 			case DIFF:
-				cout << "\tjne Vrai"<<++TagNumber<<"\t# If different"<<endl;
+				std::cout << "\tjne Vrai"<<++TagNumber<<"\t# If different"<<std::endl;
 				break;
 			case SUPE:
-				cout << "\tjae Vrai"<<++TagNumber<<"\t# If above or equal"<<endl;
+				std::cout << "\tjae Vrai"<<++TagNumber<<"\t# If above or equal"<<std::endl;
 				break;
 			case INFE:
-				cout << "\tjbe Vrai"<<++TagNumber<<"\t# If below or equal"<<endl;
+				std::cout << "\tjbe Vrai"<<++TagNumber<<"\t# If below or equal"<<std::endl;
 				break;
 			case INF:
-				cout << "\tjb Vrai"<<++TagNumber<<"\t# If below"<<endl;
+				std::cout << "\tjb Vrai"<<++TagNumber<<"\t# If below"<<std::endl;
 				break;
 			case SUP:
-				cout << "\tja Vrai"<<++TagNumber<<"\t# If above"<<endl;
+				std::cout << "\tja Vrai"<<++TagNumber<<"\t# If above"<<std::endl;
 				break;
 			default:
 				Error("Opérateur de comparaison inconnu");
 		}
-		cout << "\tpush $0\t\t# False"<<endl;
-		cout << "\tjmp Suite"<<TagNumber<<endl;
-		cout << "Vrai"<<TagNumber<<":" << endl;
-		cout << "\tpush $0xFFFFFFFFFFFFFFFF\t\t# True"<<endl;	
-		cout << "Suite"<<TagNumber<<":"<<endl;
+		std::cout << "\tpush $0\t\t# False"<<std::endl;
+		std::cout << "\tjmp Suite"<<TagNumber<<std::endl;
+		std::cout << "Vrai"<<TagNumber<<":" << std::endl;
+		std::cout << "\tpush $0xFFFFFFFFFFFFFFFF\t\t# True"<<std::endl;	
+		std::cout << "Suite"<<TagNumber<<":"<<std::endl;
 	}
 }
 
 // AssignementStatement := Identifier ":=" Expression
 void AssignementStatement(void){
-	string variable;
+	std::string variable;
 	if(current!=ID)
 		Error("Identificateur attendu");
 	if(!IsDeclared(lexer->YYText())){
-		cerr << "Erreur : Variable '"<<lexer->YYText()<<"' non déclarée"<<endl;
+		std::cerr << "Erreur : Variable '"<<lexer->YYText()<<"' non déclarée"<<std::endl;
 		exit(-1);
 	}
 	variable=lexer->YYText();
@@ -304,7 +293,7 @@ void AssignementStatement(void){
 		Error("caractères ':=' attendus");
 	current=(TOKEN) lexer->yylex();
 	Expression();
-	cout << "\tpop "<<variable<<endl;
+	std::cout << "\tpop "<<variable<<std::endl;
 }
 
 void Statement(void);
@@ -324,9 +313,9 @@ void IfStatement() {
 
 	current = (TOKEN)lexer->yylex();  // lire IF
 	Expression();
-	cout << "\tpop %rax" << endl;
-	cout << "\tcmpq $0, %rax" << endl;
-	cout << "\tje Else" << nb << endl;
+	std::cout << "\tpop %rax" << std::endl;
+	std::cout << "\tcmpq $0, %rax" << std::endl;
+	std::cout << "\tje Else" << nb << std::endl;
 
 	if (current != KEYWORD) {
 		Error("IfStatement: KEYWORD attendu");
@@ -336,16 +325,16 @@ void IfStatement() {
 
 	current = (TOKEN)lexer->yylex();  // lire THEN
 	Statement();  // IF récursif possible grâce à cette ligne
-	cout << "\tjmp Endif" << nb << endl;
+	std::cout << "\tjmp Endif" << nb << std::endl;
 
 	// ELSE optionnel (=> pas d'erreur)
-	cout << "Else" << nb << ":" << endl;
+	std::cout << "Else" << nb << ":" << std::endl;
 	if (current == KEYWORD && strcmp("ELSE", lexer->YYText()) == 0) {  // = ELSE
 		current = (TOKEN)lexer->yylex();  // lire ELSE
 		Statement();
 	}
 
-	cout << "Endif" << nb << ":" << endl;
+	std::cout << "Endif" << nb << ":" << std::endl;
 }
 
 // WhileStatement := "WHILE" Expression "DO" Statement
@@ -361,11 +350,11 @@ void WhileStatement() {
 	}
 
 	current = (TOKEN)lexer->yylex();  // lire WHILE
-	cout << "TestWhile" << nb << ":" << endl;
+	std::cout << "TestWhile" << nb << ":" << std::endl;
 	Expression();
-	cout << "\tpop %rax" << endl;
-	cout << "\tcmpq $0, %rax" << endl;
-	cout << "\tje FinWhile" << nb << endl;
+	std::cout << "\tpop %rax" << std::endl;
+	std::cout << "\tcmpq $0, %rax" << std::endl;
+	std::cout << "\tje FinWhile" << nb << std::endl;
 
 	if (current != KEYWORD) {
 		Error("WhileStatement: KEYWORD attendu");
@@ -375,9 +364,9 @@ void WhileStatement() {
 
 	current = (TOKEN)lexer->yylex();  // lire DO
 	Statement();
-	cout << "\tjmp TestWhile" << nb << endl;
+	std::cout << "\tjmp TestWhile" << nb << std::endl;
 
-	cout << "FinWhile" << nb << ":" << endl;
+	std::cout << "FinWhile" << nb << ":" << std::endl;
 }
 
 void ForStatement() {}
@@ -407,10 +396,10 @@ void Statement(void){
 
 // StatementPart := Statement {";" Statement} "."
 void StatementPart(void){
-	cout << "\t.text\t\t# The following lines contain the program"<<endl;
-	cout << "\t.globl main\t# The main function must be visible from outside"<<endl;
-	cout << "main:\t\t\t# The main function body :"<<endl;
-	cout << "\tmovq %rsp, %rbp\t# Save the position of the stack's top"<<endl;
+	std::cout << "\t.text\t\t# The following lines contain the program"<<std::endl;
+	std::cout << "\t.globl main\t# The main function must be visible from outside"<<std::endl;
+	std::cout << "main:\t\t\t# The main function body :"<<std::endl;
+	std::cout << "\tmovq %rsp, %rbp\t# Save the position of the stack's top"<<std::endl;
 	Statement();
 	while(current==SEMICOLON){
 		current=(TOKEN) lexer->yylex();
@@ -430,15 +419,15 @@ void Program(void){
 
 int main(void){	// First version : Source code on standard input and assembly code on standard output
 	// Header for gcc assembler / linker
-	cout << "\t\t\t# This code was produced by the CERI Compiler"<<endl;
+	std::cout << "\t\t\t# This code was produced by the CERI Compiler"<<std::endl;
 	// Let's proceed to the analysis and code production
 	current=(TOKEN) lexer->yylex();
 	Program();
 	// Trailer for the gcc assembler / linker
-	cout << "\tmovq %rbp, %rsp\t\t# Restore the position of the stack's top"<<endl;
-	cout << "\tret\t\t\t# Return from main function"<<endl;
+	std::cout << "\tmovq %rbp, %rsp\t\t# Restore the position of the stack's top"<<std::endl;
+	std::cout << "\tret\t\t\t# Return from main function"<<std::endl;
 	if(current!=FEOF){
-		cerr <<"Caractères en trop à la fin du programme : ["<<current<<"]";
+		std::cerr <<"Caractères en trop à la fin du programme : ["<<current<<"]";
 		Error("."); // unexpected characters at the end of program
 	}
 
