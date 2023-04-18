@@ -1,6 +1,8 @@
 MAKEFLAGS += --silent
 
-all: test
+all: go
+
+go: compilateur test
 
 clean:
 	rm *.o *.s
@@ -16,5 +18,5 @@ compilateur: compilateur.cpp tokeniser.o
 	g++ -ggdb -o compilateur compilateur.cpp tokeniser.o
 
 test: compilateur test.p
-	./compilateur <test.p >test.s
+	./compilateur < test.p > test.s
 	gcc -ggdb -no-pie -fno-pie test.s -o test
