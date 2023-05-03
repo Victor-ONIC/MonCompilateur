@@ -1,6 +1,6 @@
 MAKEFLAGS += --silent
 
-all: go
+all: test
 
 go: compilateur test
 
