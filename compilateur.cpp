@@ -21,7 +21,8 @@
 // WhileStatement := "WHILE" Expression "DO" Statement
 // ForStatement := "FOR" AssignmentStatement "TO" Expression "DO" Statement
 // BlockStatement := "BEGIN" Statement {";" Statement} "END"
-// Statement := AssignmentStatement | IfStatement | WhileStatement | ForStatement | BlockStatement
+// DisplayStatement := "DISPLAY" Expression
+// Statement := AssignmentStatement | IfStatement | WhileStatement | ForStatement | BlockStatement | DisplayStatement
 //
 // StatementPart := Statement {";" Statement} "."
 // DeclarationPart := "[" Identifier {"," Identifier} "]"
@@ -38,6 +39,11 @@
 #include <cstring>
 #include <vector>
 
+enum OPREL { EQU, DIFF, INF, SUP, INFE, SUPE, WTFR };
+enum OPADD { ADD, SUB, OR, WTFA };
+enum OPMUL { MUL, DIV, MOD, AND, WTFM };
+enum TYPE { UNSIGNED_INT, BOOLEAN };
+
 // Traduction de ENUM à STRING pour afficher des erreurs plus lisibles.
 std::string tokenString[] = {
 	"FEOF", "UNKNOWN", "NUMBER", "ID", "STRINGCONST", "LBRACKET", "RBRACKET",
@@ -47,12 +53,6 @@ std::string tokenString[] = {
 std::string typeString[] = {
 	"UNSIGNED INT", "BOOLEAN"
 };
-
-enum OPREL { EQU, DIFF, INF, SUP, INFE, SUPE, WTFR };
-enum OPADD { ADD, SUB, OR, WTFA };
-enum OPMUL { MUL, DIV, MOD, AND, WTFM };
-
-enum TYPE { UNSIGNED_INT, BOOLEAN };
 
 // Les variables sont stockés sous la forme d'une struct.
 struct Variable {
@@ -506,8 +506,6 @@ void ForStatement() {
 	std::cout << "\tpop %rax" << std::endl;  // %rax contient le résultat
 	std::cout << "\tcmpq %rax, " << var << std::endl;
 	std::cout << "\tja EndFor" << nb << std::endl;
-
-	std::cout << "\taddq $1, " << var << std::endl;  // incrémenter
 	
 	if (current != KEYWORD) {
 		Error("ForStatement: KEYWORD attendu!");
@@ -520,6 +518,7 @@ void ForStatement() {
 
 	Statement();  // reconnaître Statement
 
+	std::cout << "\taddq $1, " << var << std::endl;  // incrémenter
 	std::cout << "\tjmp TestFor" << nb << std::endl;
 
 	std::cout << "EndFor" << nb << ":" << std::endl;
@@ -557,8 +556,32 @@ void BlockStatement() {
 	std::cout << "End" << nb << ":" << std::endl;
 }
 
-// Statement := AssignmentStatement | IfStatement | WhileStatement | ForStatement | BlockStatement
-void Statement(){
+// DisplayStatement := "DISPLAY" Expression
+void DisplayStatement() {
+	if (current != KEYWORD) {
+		Error("DisplayStatement: KEYWORD attendu!");
+	}
+	if (strcmp("DISPLAY", lexer->YYText()) != 0) {
+		Error("DisplayStatement: DISPLAY keyword attendu!");
+	}
+
+	current = (TOKEN)lexer->yylex();  // reconnaître DISPLAY
+
+	TYPE exprType = Expression();  // reconnaître Expression
+
+	if (exprType != UNSIGNED_INT) {
+		Error("DisplayStatement: TYPE ERROR: UNSIGNED_INT attendu! (" + typeString[exprType] + ")");
+	}
+
+	std::cout << "\tpop %rdx" << std::endl;
+	std::cout << "\tmovq $FormatStringLLU" << ", %rsi" << std::endl;
+	std::cout << "\tmovl $1, %edi" << std::endl;
+	std::cout << "\tmovl $0, %eax" << std::endl;
+	std::cout << "\tcall __printf_chk@PLT" << std::endl;
+}
+
+// Statement := AssignmentStatement | IfStatement | WhileStatement | ForStatement | BlockStatement | DisplayStatement
+void Statement() {
 	if (current == ID) {
 		AssignmentStatement();
 	} else if (current == KEYWORD) {
@@ -570,6 +593,8 @@ void Statement(){
 			ForStatement();
 		} else if (strcmp("BEGIN", lexer->YYText()) == 0) {
 			BlockStatement();
+		} else if (strcmp("DISPLAY", lexer->YYText()) == 0) {
+			DisplayStatement();
 		} else {
 			Error("Statement: Unexpected KEYWORD!");
 		}
@@ -580,9 +605,9 @@ void Statement(){
 
 // StatementPart := Statement {";" Statement} "."
 void StatementPart() {
-	std::cout << "\t.text\t# The following lines contain the program" << std::endl;
+	std::cout << "\t.text" << std::endl;
 	std::cout << "\t.globl main\t# The main function must be visible from outside" << std::endl;
-	std::cout << "main:\t# The main function body:" << std::endl;
+	std::cout << "main:" << std::endl;
 	std::cout << "\tmovq %rsp, %rbp\t# Save the position of the stack's top" << std::endl;
 	std::cout << std::endl;
 
@@ -605,9 +630,6 @@ void DeclarationPart() {
 	if (current != LBRACKET) {
 		Error("DeclarationPart: '[' attendu!");
 	}
-
-	std::cout << "\t.data" << std::endl;
-	std::cout << "\t.align 8" << std::endl;
 	
 	current = (TOKEN)lexer->yylex();  // reconnaître "["
 
@@ -653,8 +675,10 @@ void Program() {
 /// First version: Source code on standard input and assembly code on standard output.
 int main() {
 	// Header for gcc assembler / linker
-	std::cout << "# This code was produced by the CERI Compiler" << std::endl;
+	std::cout << "# This code was produced by VICTOR's compiler. <3" << std::endl;
 	std::cout << std::endl;
+	std::cout << "\t.data" << std::endl;
+	std::cout << "FormatStringLLU:\t.string \"%llu\\n\"" << std::endl;
 
 	// Let's proceed to the analysis and code production
 	current = (TOKEN) lexer->yylex();  // déplacer la tête de lecture sur le premier token
@@ -668,6 +692,7 @@ int main() {
 	if (current != FEOF) {
 		Error("Fin du programme attendue.");  // unexpected characters at the end of program
 	}
+	
 	return 0;
 }
 
@@ -697,6 +722,8 @@ Questions:
 
 tokeniser.l
 	keyword    ("IF" | ...) ou (IF | ...)
+
+à quoi ça sert "\t.align 8" ?
 
 */
 

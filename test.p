@@ -1,10 +1,5 @@
 (* Partie déclaration *)
-[a,i,compteur,total]
+[a]
 
 (* Partie instructions *)
-a := 9999;
-FOR i := 0 TO a DO
-BEGIN
-    compteur := compteur + 1;
-    total := total + compteur
-END.
+FOR a := 1 TO 10 DO DISPLAY a.
