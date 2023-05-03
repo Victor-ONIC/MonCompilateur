@@ -8,6 +8,10 @@ clean:
 	rm *.o *.s
 	rm tokeniser.cpp
 
+cleangit: clean
+	rm compilateur
+	rm test
+
 tokeniser.cpp: tokeniser.l
 	flex++ -d -o tokeniser.cpp tokeniser.l
 

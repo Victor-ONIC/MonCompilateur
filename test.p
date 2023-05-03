@@ -1,5 +1,13 @@
 (* Partie déclaration *)
-[a]
+VAR
+    a : INTEGER;
+    b : BOOLEAN.
 
 (* Partie instructions *)
-FOR a := 1 TO 10 DO DISPLAY a.
+a := 1;
+b := TRUE;
+
+IF b THEN a := 9999 ELSE a := 0
+;
+DISPLAY a
+.

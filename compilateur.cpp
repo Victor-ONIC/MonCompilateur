@@ -28,6 +28,10 @@
 // DeclarationPart := "[" Identifier {"," Identifier} "]"
 // Program := [DeclarationPart] StatementPart
 //
+// Type := "INTEGER" | "BOOLEAN"
+// VarDeclaration := Identifier {"," Identifier} ":" Type
+// DeclarationPart := "VAR" VarDeclaration {";" VarDeclaration} "."
+//
 ///
 
 #include <string>
@@ -42,7 +46,7 @@
 enum OPREL { EQU, DIFF, INF, SUP, INFE, SUPE, WTFR };
 enum OPADD { ADD, SUB, OR, WTFA };
 enum OPMUL { MUL, DIV, MOD, AND, WTFM };
-enum TYPE { UNSIGNED_INT, BOOLEAN };
+enum TYPE { INTEGER, BOOLEAN, WTFT };
 
 // Traduction de ENUM à STRING pour afficher des erreurs plus lisibles.
 std::string tokenString[] = {
@@ -76,7 +80,7 @@ FlexLexer* lexer = new yyFlexLexer;
 std::set<Variable> DeclaredVariables;
 
 // Valeur incrémentale qui permet d'avoir plusieurs étiquettes du même nom.
-unsigned long TagNumber = 0;
+unsigned long long TagNumber = 0;
 
 
 
@@ -167,7 +171,7 @@ TYPE Identifier() {
 	std::cout << "\tpush " << varName << std::endl;
 	current = (TOKEN)lexer->yylex();  // reconnaître l'ID
 	
-	return UNSIGNED_INT;  // pour l'instant, toutes les variables sont des int
+	return DeclaredVariables.find({varName})->type;
 }
 
 // Number := Digit {Digit}
@@ -178,10 +182,10 @@ TYPE Number() {
 
 	std::cout << "\tpush $" << atoi(lexer->YYText()) << std::endl;
 	current = (TOKEN)lexer->yylex();  // reconnaître le NUMBER
-	return UNSIGNED_INT;
+	return INTEGER;
 }
 
-// Factor := Number | Identifier | "(" Expression ")" | "!" Factor
+// Factor := Number | Identifier | "(" Expression ")" | "!" Factor | "TRUE" | "FALSE"
 TYPE Factor() {
 	TYPE returnType;
 
@@ -199,7 +203,7 @@ TYPE Factor() {
 		current = (TOKEN)lexer->yylex();  // reconnaître ")"
 
 	} else if (current == NOT) {
-		unsigned long nb = ++TagNumber;
+		unsigned long long nb = ++TagNumber;
 
 		current = (TOKEN)lexer->yylex();  // reconnaître "!"
 
@@ -218,10 +222,25 @@ TYPE Factor() {
 		std::cout << "\tpush $0" << std::endl;
 		std::cout << "Suite" << nb << ":" << std::endl;
 
-		return BOOLEAN;
+		returnType = BOOLEAN;
+	} else if (current == KEYWORD) {
+		if (strcmp("TRUE", lexer->YYText()) != 0 && strcmp("FALSE", lexer->YYText()) != 0) {
+			Error("Factor: Unexpected KEYWORD!");
+		}
+
+		if (strcmp("TRUE", lexer->YYText()) == 0) {
+			std::cout << "\tpush $0xFFFFFFFFFFFFFFFF" << std::endl;
+		} else {
+			std::cout << "\tpush $0x0" << std::endl;
+		}
+
+		current = (TOKEN)lexer->yylex();  // reconnaître TRUE ou FALSE
+
+		returnType = BOOLEAN;
 	} else {
 		Error("Factor: NUMBER ou ID ou '(' attendus!");
 	}
+
 	return returnType;
 }
 
@@ -312,7 +331,7 @@ TYPE Expression() {
 	TYPE returnType = SimpleExpression();  // reconnaître SimpleExpression
 
 	if (current == RELOP) {
-		unsigned long nb = ++TagNumber;
+		unsigned long long nb = ++TagNumber;
 
 		// Sauvegarder l'opérateur utilisé.
 		OPREL oprel = RelationalOperator();  // reconnaître RelationalOperator
@@ -391,7 +410,7 @@ void AssignmentStatement() {
 
 // IfStatement := "IF" Expression "THEN" Statement [ "ELSE" Statement ]
 void IfStatement() {
-	unsigned long nb = ++TagNumber;
+	unsigned long long nb = ++TagNumber;
 
 	if (current != KEYWORD) {
 		Error("IfStatement: KEYWORD attendu!");
@@ -437,7 +456,7 @@ void IfStatement() {
 
 // WhileStatement := "WHILE" Expression "DO" Statement
 void WhileStatement() {
-	unsigned long nb = ++TagNumber;
+	unsigned long long nb = ++TagNumber;
 
 	if (current != KEYWORD) {
 		Error("WhileStatement: KEYWORD attendu!");
@@ -476,7 +495,7 @@ void WhileStatement() {
 
 // ForStatement := "FOR" AssignmentStatement "TO" Expression "DO" Statement
 void ForStatement() {
-	unsigned long nb = ++TagNumber;
+	unsigned long long nb = ++TagNumber;
 
 	if (current != KEYWORD) {
 		Error("ForStatement: KEYWORD attendu!");
@@ -526,7 +545,7 @@ void ForStatement() {
 
 // BlockStatement := "BEGIN" Statement {";" Statement} "END"
 void BlockStatement() {
-	unsigned long nb = ++TagNumber;
+	unsigned long long nb = ++TagNumber;
 
 	if (current != KEYWORD) {
 		Error("BlockStatement: KEYWORD attendu!");
@@ -569,8 +588,8 @@ void DisplayStatement() {
 
 	TYPE exprType = Expression();  // reconnaître Expression
 
-	if (exprType != UNSIGNED_INT) {
-		Error("DisplayStatement: TYPE ERROR: UNSIGNED_INT attendu! (" + typeString[exprType] + ")");
+	if (exprType != INTEGER) {
+		Error("DisplayStatement: TYPE ERROR: INTEGER attendu! (" + typeString[exprType] + ")");
 	}
 
 	std::cout << "\tpop %rdx" << std::endl;
@@ -605,6 +624,7 @@ void Statement() {
 
 // StatementPart := Statement {";" Statement} "."
 void StatementPart() {
+	std::cout << "\t.align 8" << std::endl;
 	std::cout << "\t.text" << std::endl;
 	std::cout << "\t.globl main\t# The main function must be visible from outside" << std::endl;
 	std::cout << "main:" << std::endl;
@@ -625,46 +645,98 @@ void StatementPart() {
 	current = (TOKEN)lexer->yylex();  // reconnaître "."
 }
 
-// DeclarationPart := "[" Identifier {"," Identifier} "]"
-void DeclarationPart() {
-	if (current != LBRACKET) {
-		Error("DeclarationPart: '[' attendu!");
+// Type := "INTEGER" | "BOOLEAN"
+TYPE Type() {
+	TYPE type;
+	if (strcmp(lexer->YYText(), "INTEGER") == 0) {
+		type = INTEGER;
+	} else if (strcmp(lexer->YYText(), "BOOLEAN") == 0) {
+		type = BOOLEAN;
+	} else {
+		type = WTFT;
 	}
-	
-	current = (TOKEN)lexer->yylex();  // reconnaître "["
+	current = (TOKEN)lexer->yylex();  // reconnaître le type.
+	return type;
+}
+
+// VarDeclaration := Identifier {"," Identifier} ":" Type
+void VarDeclaration() {
+	// Ensemble de noms des variables déclarées ici.
+	std::set<std::string> variables;
 
 	if (current != ID) {
-		Error("DeclarationPart: ID attendu!");
+		Error("VarDeclaration: ID attendu!");
 	}
 
-	std::cout << lexer->YYText() << ":\t.quad 0" << std::endl;
-	DeclaredVariables.insert({lexer->YYText(), UNSIGNED_INT});  // déclarer la variable (toujours int)
-	current = (TOKEN)lexer->yylex();  // reconnaître ID
+	variables.insert(lexer->YYText());
+	current = (TOKEN)lexer->yylex();  // reconnaître Identifier
 
-	while (current == COMMA) {
+	while(current == COMMA) {
 		current = (TOKEN)lexer->yylex();  // reconnaître ","
 
-		if (current != ID) {
-			Error("DeclarationPart: ID attendu!");
-		}
-
-		std::cout << lexer->YYText() << ":\t.quad 0" << std::endl;
-		DeclaredVariables.insert({lexer->YYText(), UNSIGNED_INT});  // déclarer la variable (toujours int)
-		current = (TOKEN)lexer->yylex();  // reconnaître ID
+		variables.insert(lexer->YYText());
+		current = (TOKEN)lexer->yylex();  // reconnaître Identifier
 	}
 
-	if (current != RBRACKET) {
-		Error("DeclarationPart: ']' attendu!");
+	if (current != COLON) {
+		Error("VarDeclaration: COLON attendu!");
 	}
 
-	current = (TOKEN)lexer->yylex();  // reconnaître "]"
+	current = (TOKEN)lexer->yylex();  // reconnaître ":"
+
+	TYPE varType = Type();  // reconnaître Type
+
+	// 1. Déclarer et 2. Créer les variables lues.
+	switch (varType) {
+		case INTEGER:
+			// .quad.
+			for (std::string variable : variables) {
+				DeclaredVariables.insert({variable, INTEGER});  // déclarer
+				std::cout << variable << ":\t.quad 0" << std::endl;  // créer
+			}
+			break;
+		case BOOLEAN:
+			// .byte OU .quad également, on n'est pas à ça près.
+			for (std::string variable : variables) {
+				DeclaredVariables.insert({variable, BOOLEAN});  // déclarer
+				std::cout << variable << ":\t.quad 0" << std::endl;  // créer
+			}
+			break;
+		default:
+			Error("VarDeclaration: Type inconnu.");
+	}
+}
+
+// DeclarationPart := "VAR" VarDeclaration {";" VarDeclaration} "."
+void DeclarationPart() {
+	if (current != KEYWORD) {
+		Error("DeclarationPart: KEYWORD attendu!");
+	}
+	if (strcmp("VAR", lexer->YYText()) != 0) {
+		Error("DeclarationPart: VAR keyword attendu!");
+	}
+
+	current = (TOKEN)lexer->yylex();  // reconnaître "VAR"
+
+	VarDeclaration();  // reconnaître VarDeclaration
+
+	while (current == SEMICOLON) {
+		current = (TOKEN)lexer->yylex();  // reconnaître ";"
+		VarDeclaration();  // reconnaître VarDeclaration
+	}
+
+	if (current != DOT) {
+		Error("DeclarationPart: '.' attendu!");
+	}
+
+	current = (TOKEN)lexer->yylex();  // reconnaître "."
 
 	std::cout << std::endl;
 }
 
 // Program := [DeclarationPart] StatementPart
 void Program() {
-	if (current == LBRACKET) {
+	if (current == KEYWORD) {
 		// Partie déclaration optionnelle.
 		// Mais si pas de variable, alors pas d'instructions...
 		DeclarationPart();
@@ -675,7 +747,7 @@ void Program() {
 /// First version: Source code on standard input and assembly code on standard output.
 int main() {
 	// Header for gcc assembler / linker
-	std::cout << "# This code was produced by VICTOR's compiler. <3" << std::endl;
+	std::cout << "# This code was produced by VICTOR's Vcompiler. <3" << std::endl;
 	std::cout << std::endl;
 	std::cout << "\t.data" << std::endl;
 	std::cout << "FormatStringLLU:\t.string \"%llu\\n\"" << std::endl;
@@ -700,30 +772,18 @@ int main() {
 
 Notes:
 
------- Rajouter les types ------
-Déclaration (vu en cours):
-```
-VAR NAME[, NAME] : TYPE;
-	NAME[, NAME] : TYPE;
-	...
-	NAME[, NAME] : TYPE
-BEGIN
-	...
-END.
-```
-Rajout dans la grammaire:
-	DeclarationPart := "VAR" VarDeclaration {";" VarDeclaration}
-	VarDeclaration := Ident {"," Ident} ":" Type
-	Type := "UNSIGNED_INT" (voire KEYWORD?)
-
-
+POUR CHAR
+a:	.byte '6'
+...
+movq $0, %rax
+movb a, %al
+push %rax
+...
+pop %rax
+... %al
 
 Questions:
 
-tokeniser.l
-	keyword    ("IF" | ...) ou (IF | ...)
-
-à quoi ça sert "\t.align 8" ?
 
 */
 

@@ -1,4 +1,4 @@
-# CERIcompiler
+# Vcompiler
 
 A simple compiler.  
 From : Pascal-like imperative LL(k) langage  
