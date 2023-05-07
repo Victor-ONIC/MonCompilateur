@@ -19,6 +19,8 @@ enum TOKEN {
     RELOP,
     NOT,
     ASSIGN,
-    KEYWORD,     // ajouté TP3
-    COLON
+    KEYWORD,
+    COLON,
+    FLOATCONST,
+    CHARCONST
 };

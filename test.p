@@ -1,13 +1,10 @@
 (* Partie déclaration *)
 VAR
-    a : INTEGER;
-    b : BOOLEAN.
+    a, b : INTEGER.
 
 (* Partie instructions *)
-a := 1;
-b := TRUE;
-
-IF b THEN a := 9999 ELSE a := 0
-;
-DISPLAY a
-.
+BEGIN
+    a := 1;
+    b := 2;
+    DISPLAY a / b
+END.

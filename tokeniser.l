@@ -59,17 +59,23 @@
 	// stringconst: toute suite de catactères différents de \n ou ", entourés de deux ".
 stringconst  \"[^\n"]+\"
 
+	// character: tout caractère entre deux '.
+character	\'.\'
+
 	// ws: toute suite de ' ', \t, \n, ou \r.
 ws      [ \t\n\r]+
 
 	// alpha: un caractère de l'alphabet latin, majuscule ou minuscule.
 alpha   [A-Za-z]
 
-	// digit: un caractère de 0 à 9.
+	// digit: un chiffre de 0 à 9.
 digit   [0-9]
 
 	// number: équivaut à [0-9]+, soit une suite de un ou plus <digit>.
 number  {digit}+
+
+	// float: un ou plusieurs chiffres, suivis d'un point, suivi d'un ou plusieurs chiffres.
+float	{digit}+\.{digit}+
 
 	// id: un caractère suivi d'une suite de 0 ou plus caractères ou chiffres.
 id		{alpha}({alpha}|{digit})*
@@ -84,7 +90,7 @@ mulop	(\*|\/|%|\&\&)
 relop	(\<|\>|"=="|\<=|\>=|!=)
 
 	// keyword: IF, THEN, ELSE, WHILE, DO, FOR, TO, BEGIN, ou END
-keyword (IF|THEN|ELSE|WHILE|DO|FOR|TO|BEGIN|END|DISPLAY|VAR|INTEGER|BOOLEAN|TRUE|FALSE)
+keyword (IF|THEN|ELSE|WHILE|DO|FOR|TO|BEGIN|END|DISPLAY|TRUE|FALSE|VAR|INTEGER|BOOLEAN|DOUBLE|CHAR)
 
 	// unknown: toute suite de un ou plus caractères DIFFÉRENTS de
 	// ", A-Z, a-z, 0-9, ' ', \n, \r, \t, (, ), <, >, =, !, %, &, |, }, -, ;, ou .
@@ -115,9 +121,11 @@ unknown [^\"A-Za-z0-9 \n\r\t\(\)\<\>\=\!\%\&\|\}\-\;\.]+
 {mulop}		return MULOP;
 {relop}		return RELOP;
 {number}	return NUMBER;
+{float} 	return FLOATCONST;
 {keyword}	return KEYWORD;
 {id}		return ID;
 {stringconst}	return STRINGCONST;
+{character} 	return CHARCONST;
 "["			return LBRACKET;
 "]"			return RBRACKET;
 ","			return COMMA;

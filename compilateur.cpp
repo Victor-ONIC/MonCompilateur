@@ -2,16 +2,16 @@
 /// GRAMMAIRE DU LANGAGE
 //
 // cf tokeniser.l
+//    Identifier
+//    Number
+//    Float
+//    Character
 // 
-// Letter := "a"|...|"z"|"A"|...|"Z"
-// Digit := "0"|"1"|"2"|"3"|"4"|"5"|"6"|"7"|"8"|"9"
 // MultiplicativeOperator := "*" | "/" | "%" | "&&"
 // AdditiveOperator := "+" | "-" | "||"
 // RelationalOperator := "==" | "!=" | "<" | ">" | "<=" | ">="  
 //
-// Number := Digit {Digit}
-// Identifier := Letter {Letter | Digit}
-// Factor := Number | Identifier | "(" Expression ")" | "!" Factor
+// Factor := Number | Identifier | Float | Character | "(" Expression ")" | "!" Factor | "TRUE" | "FALSE"
 // Term := Factor {MultiplicativeOperator Factor}
 // SimpleExpression := Term {AdditiveOperator Term}
 // Expression := SimpleExpression [RelationalOperator SimpleExpression]
@@ -28,7 +28,7 @@
 // DeclarationPart := "[" Identifier {"," Identifier} "]"
 // Program := [DeclarationPart] StatementPart
 //
-// Type := "INTEGER" | "BOOLEAN"
+// Type := "INTEGER" | "BOOLEAN" | "DOUBLE" | "CHAR"
 // VarDeclaration := Identifier {"," Identifier} ":" Type
 // DeclarationPart := "VAR" VarDeclaration {";" VarDeclaration} "."
 //
@@ -46,25 +46,26 @@
 enum OPREL { EQU, DIFF, INF, SUP, INFE, SUPE, WTFR };
 enum OPADD { ADD, SUB, OR, WTFA };
 enum OPMUL { MUL, DIV, MOD, AND, WTFM };
-enum TYPE { INTEGER, BOOLEAN, WTFT };
+enum TYPE { INTEGER, BOOLEAN, DOUBLE, CHAR, WTFT };
 
 // Traduction de ENUM à STRING pour afficher des erreurs plus lisibles.
 std::string tokenString[] = {
 	"FEOF", "UNKNOWN", "NUMBER", "ID", "STRINGCONST", "LBRACKET", "RBRACKET",
 	"LPARENT", "RPARENT", "COMMA", "SEMICOLON", "DOT", "ADDOP", "MULOP",
-	"RELOP", "NOT", "ASSIGN", "KEYWORD"
+	"RELOP", "NOT", "ASSIGN", "KEYWORD", "COLON", "FLOATCONST", "CHARCONST"
 };
 std::string typeString[] = {
-	"UNSIGNED INT", "BOOLEAN"
+	"INTEGER", "BOOLEAN", "DOUBLE", "CHAR"
 };
 
-// Les variables sont stockés sous la forme d'une struct.
+// Les variables sont stockées sous la forme d'une struct.
 struct Variable {
 	std::string name;
 	TYPE type;
 };
 // On doit surcharger l'opérateur < pour pouvoir faire une recherche
 // dans DeclaredVariables.
+// Pour comparer deux struct Variable on ne regarde que leur nom.
 bool operator<(const Variable& left, const Variable& right) {
 	return left.name < right.name;
 }
@@ -76,7 +77,7 @@ TOKEN current;
 // lexer->YYText() donne le texte associé au token lu, sous forme d'un c-string.
 FlexLexer* lexer = new yyFlexLexer;
 
-// Stocke les noms des variables du programme Pascal.
+// Stocke les variables du programme.
 std::set<Variable> DeclaredVariables;
 
 // Valeur incrémentale qui permet d'avoir plusieurs étiquettes du même nom.
@@ -88,6 +89,8 @@ unsigned long long TagNumber = 0;
 bool IsDeclared(const char *id) {
 	return DeclaredVariables.find({id}) != DeclaredVariables.end();
 }
+
+/// Retourne 
 
 /// Arrêt total du programme, laissant la compilation inachevée.
 void Error(std::string s) {
@@ -157,7 +160,6 @@ OPREL RelationalOperator() {
 	return oprel;
 }
 
-// Identifier := Letter {Letter | Digit}
 TYPE Identifier() {
 	if (current != ID) {
 		Error("Identifier: ID attendu!");
@@ -169,23 +171,58 @@ TYPE Identifier() {
 	}
 
 	std::cout << "\tpush " << varName << std::endl;
+
 	current = (TOKEN)lexer->yylex();  // reconnaître l'ID
 	
 	return DeclaredVariables.find({varName})->type;
 }
 
-// Number := Digit {Digit}
 TYPE Number() {
 	if (current != NUMBER) {
-		Error("Number: NUMBER attendu!");
+		Error("Number: Nombre entier attendu!");
 	}
 
 	std::cout << "\tpush $" << atoi(lexer->YYText()) << std::endl;
+
 	current = (TOKEN)lexer->yylex();  // reconnaître le NUMBER
+
 	return INTEGER;
 }
 
-// Factor := Number | Identifier | "(" Expression ")" | "!" Factor | "TRUE" | "FALSE"
+TYPE Float() {
+	if (current != FLOATCONST) {
+		Error("Float: Constante flottante attendue!");
+	}
+
+	// Interpréter le flottant 64 bits comme un entier 64 bits.
+	double f = atof(lexer->YYText());
+	unsigned long long* i = (unsigned long long*)&f;
+
+	// On ne peut pas directement empiler, donc on passe par un registre.
+	std::cout << "\tmovq $" << *i << ", %rax" << std::endl;
+	std::cout << "\tpush %rax # Empile " << f << std::endl;
+
+	current = (TOKEN)lexer->yylex();  // reconnaître le FLOATCONST
+
+	return DOUBLE;
+}
+
+TYPE Character() {
+	if (current != CHARCONST) {
+		Error("Character: Constante caractère attendue!");
+	}
+
+	char c = lexer->YYText()[1];  // sera toujours de la forme 'x'
+	std::cout << "\tmovq $0, %rax" << std::endl;
+	std::cout << "\tmovb $" << (int)c << ", %al" << std::endl;
+	std::cout << "\tpush %rax" << std::endl;
+
+	current = (TOKEN)lexer->yylex();  // reconnaître le CHARCONST
+
+	return CHAR;
+}
+
+// Factor := Number | Identifier | Float | Character | "(" Expression ")" | "!" Factor | "TRUE" | "FALSE"
 TYPE Factor() {
 	TYPE returnType;
 
@@ -193,18 +230,20 @@ TYPE Factor() {
 		returnType = Number();  // reconnaître Number
 	} else if (current == ID) {
 		returnType = Identifier();  // reconnaître Identifier
+	} else if (current == FLOATCONST) {
+		returnType = Float();  // reconnaître Float
+	} else if (current == CHARCONST) {
+		returnType = Character();  // reconnaître Character
 	} else if (current == LPARENT) {
-
 		current = (TOKEN)lexer->yylex();  // reconnaître "("
+
 		returnType = Expression();  // reconnaître Expression
 		if (current != RPARENT) {
 			Error("Factor: ')' attendue!");
 		}
+
 		current = (TOKEN)lexer->yylex();  // reconnaître ")"
-
 	} else if (current == NOT) {
-		unsigned long long nb = ++TagNumber;
-
 		current = (TOKEN)lexer->yylex();  // reconnaître "!"
 
 		TYPE factorType = Factor();  // reconnaître Factor
@@ -212,15 +251,7 @@ TYPE Factor() {
 			Error("Factor: TYPE ERROR: BOOLEAN attendu ! (" + typeString[factorType] + ")");
 		}
 
-		std::cout << "\tpop %rax" << "\t# NOT" << std::endl;
-		std::cout << "\tcmpq $0, %rax" << std::endl;
-		std::cout << "\tjne Faux" << nb << std::endl;
-
-		std::cout << "\tpush $0xFFFFFFFFFFFFFFFF" << std::endl;
-		std::cout << "\tjmp Suite" << nb << std::endl;
-		std::cout << "Faux" << nb << ":" << std::endl;
-		std::cout << "\tpush $0" << std::endl;
-		std::cout << "Suite" << nb << ":" << std::endl;
+		std::cout << "\tnotq (%rsp)" << std::endl;
 
 		returnType = BOOLEAN;
 	} else if (current == KEYWORD) {
@@ -238,7 +269,7 @@ TYPE Factor() {
 
 		returnType = BOOLEAN;
 	} else {
-		Error("Factor: NUMBER ou ID ou '(' attendus!");
+		Error("Factor: Facteur inconnu!");
 	}
 
 	return returnType;
@@ -246,11 +277,9 @@ TYPE Factor() {
 
 // Term := Factor {MultiplicativeOperator Factor}
 TYPE Term() {
-	// Le type de retour de Term est le type de chaque opérande.
 	TYPE returnType = Factor();  // reconnaître Facteur
 
 	while (current == MULOP) {
-		// Sauvegarder l'opérateur utilisé.
 		OPMUL mulop = MultiplicativeOperator();  // reconnaître MultiplicativeOperator
 
 		TYPE operandType = Factor();  // reconnaître Facteur
@@ -258,32 +287,67 @@ TYPE Term() {
 			Error("Term: TYPE ERROR! (" + typeString[returnType] + " and " + typeString[operandType] + ")");
 		}
 
-		std::cout << "\tpop %rbx" << std::endl;	// get first operand
-		std::cout << "\tpop %rax" << std::endl;	// get second operand
+		// Obtenir les opérandes.
+		if (returnType == DOUBLE) {
+			std::cout << "\tfldl (%rsp)" << std::endl;
+			std::cout << "\taddq $8, %rsp" << std::endl;
+			std::cout << "\tfldl (%rsp)" << std::endl;
+			std::cout << "\taddq $8, %rsp" << std::endl;
+		} else {
+			std::cout << "\tpop %rbx" << std::endl;
+			std::cout << "\tpop %rax" << std::endl;
+		}
 
 		switch(mulop) {
 			case AND:
+				if (returnType != BOOLEAN) {
+					Error("Term: Le type de l'expression doit être booléen!");
+				}
 				std::cout << "\tandq %rbx, %rax" << std::endl;  // %rax and %rbx => %rax
-				std::cout << "\tpush %rax\t# AND" << std::endl;  // store result
+				std::cout << "\tpush %rax\t# AND" << std::endl;  // store result      ^
 				break;
 			case MUL:
-				std::cout << "\tmulq %rbx" << std::endl;  // %rbx * %rax => %rdx:%rax
-				std::cout << "\tpush %rax\t# MUL" << std::endl;  // store result   ^
+				if (returnType != INTEGER && returnType != DOUBLE) {
+					Error("Term: Le type de l'expression doit être entier ou flottant!");
+				}
+
+				if (returnType == INTEGER) {
+					std::cout << "\tmulq %rbx" << std::endl;  // %rbx * %rax => %rdx:%rax
+					std::cout << "\tpush %rax\t# MUL" << std::endl;  // store result:  ^
+				} else {
+					std::cout << "\tfmulp %st(0), %st(1)\t# MUL" << std::endl;  // %st(1) * %st(0) => %st(0)
+					std::cout << "\tsubq $8, %rsp" << std::endl;
+					std::cout << "\tfstpl (%rsp)" << std::endl;  // store result                        ^
+				}
 				break;
 			case DIV:
-				std::cout << "\tmovq $0, %rdx" << std::endl;  // Higher part of numerator  
-				std::cout << "\tdiv %rbx" << std::endl;  // %rdx:%rax / %rbx => q:%rax r:%rdx
-				std::cout << "\tpush %rax\t# DIV" << std::endl;  // store result    ^
+				if (returnType != INTEGER && returnType != DOUBLE) {
+					Error("Term: Le type de l'expression doit être entier ou flottant!");
+				}
+
+				if (returnType == INTEGER) {
+					std::cout << "\tmovq $0, %rdx" << std::endl;  // Higher part of numerator  
+					std::cout << "\tdiv %rbx" << std::endl;  // %rdx:%rax / %rbx => q:%rax r:%rdx
+					std::cout << "\tpush %rax\t# DIV" << std::endl;  // store result:   ^
+				} else {
+					std::cout << "\tfdivp %st(0), %st(1)\t# DIV" << std::endl;  // %st(1) / %st(0) => %st(0)
+					std::cout << "\tsubq $8, %rsp" << std::endl;
+					std::cout << "\tfstpl (%rsp)" << std::endl;  // store result                        ^
+				}
 				break;
 			case MOD:
+				if (returnType != INTEGER) {
+					Error("Term: Le type de l'expression doit être entier!");
+				}
 				std::cout << "\tmovq $0, %rdx" << std::endl;  // Higher part of numerator  
 				std::cout << "\tdiv %rbx" << std::endl;  // %rdx:%rax / %rbx => q:%rax r:%rdx
-				std::cout << "\tpush %rdx\t# MOD" << std::endl;  // store result           ^
+				std::cout << "\tpush %rdx\t# MOD" << std::endl;  // store result:          ^
 				break;
 			default:
-				Error("Term: Opérateur multiplicatif attendu!");
+				Error("Term: Opérateur multiplicatif inconnu!");
 		}
 	}
+
 	return returnType;
 }
 
@@ -301,24 +365,60 @@ TYPE SimpleExpression(){
 			Error("SimpleExpression: TYPE ERROR! (" + typeString[returnType] + " and " + typeString[operandType] + ")");
 		}
 
-		std::cout << "\tpop %rbx"<<std::endl;  // get first operand
-		std::cout << "\tpop %rax"<<std::endl;  // get second operand
+		// Obtenir les opérandes.
+		if (returnType == DOUBLE) {
+			// DOUBLE
+			std::cout << "\tfldl (%rsp)" << std::endl;
+			std::cout << "\taddq $8, %rsp" << std::endl;
+			std::cout << "\tfldl (%rsp)" << std::endl;
+			std::cout << "\taddq $8, %rsp" << std::endl;
+		} else {
+			// INTEGER, BOOLEAN, CHAR
+			std::cout << "\tpop %rbx" << std::endl;
+			std::cout << "\tpop %rax" << std::endl;
+		}
 
 		switch(adop) {
 			case OR:
+				if (returnType != BOOLEAN) {
+					Error("SimpleExpression: Le type de l'expression doit être booléen!");
+				}
 				std::cout << "\torq %rbx, %rax\t# OR" << std::endl;  // %rax or %rbx => %rax
+				std::cout << "\tpush %rax" << std::endl;  // store result                 ^
 				break;
 			case ADD:
-				std::cout << "\taddq %rbx, %rax\t# ADD" << std::endl;  // %rax + %rbx => %rax
+				if (returnType != INTEGER && returnType != DOUBLE) {
+					Error("SimpleExpression: Le type de l'expression doit être entier ou flottant!");
+				}
+
+				if (returnType == INTEGER) {
+					std::cout << "\taddq %rbx, %rax\t# ADD" << std::endl;  // %rax + %rbx => %rax
+					std::cout << "\tpush %rax" << std::endl;  // store result                  ^
+				} else {
+					std::cout << "\tfaddp %st(0), %st(1)\t# ADD" << std::endl;  // %st(1) / %st(0) => %st(0)
+					std::cout << "\tsubq $8, %rsp" << std::endl;
+					std::cout << "\tfstpl (%rsp)" << std::endl;  // store result                        ^
+				}
 				break;
-			case SUB:	
-				std::cout << "\tsubq %rbx, %rax\t# SUB" << std::endl;  // %rax - %rbx => %rax
+			case SUB:
+				if (returnType != INTEGER && returnType != DOUBLE) {
+					Error("SimpleExpression: Le type de l'expression doit être entier ou flottant!");
+				}
+
+				if (returnType == INTEGER) {
+					std::cout << "\tsubq %rbx, %rax\t# SUB" << std::endl;  // %rax - %rbx => %rax
+					std::cout << "\tpush %rax" << std::endl;  // store result                  ^
+				} else {
+					std::cout << "\tfsubp %st(0), %st(1)\t# SUB" << std::endl;  // %st(1) / %st(0) => %st(0)
+					std::cout << "\tsubq $8, %rsp" << std::endl;
+					std::cout << "\tfstpl (%rsp)" << std::endl;  // store result                        ^
+				}
 				break;
 			default:
 				Error("SimpleExpression: Opérateur additif inconnu!");
 		}
-		std::cout << "\tpush %rax" << std::endl;  // store result
 	}
+
 	return returnType;
 }
 
@@ -341,9 +441,18 @@ TYPE Expression() {
 			Error("Expression: TYPE ERROR! (" + typeString[returnType] + " and " + typeString[operandType] + ")");
 		}
 
-		std::cout << "\tpop %rax" << std::endl;
-		std::cout << "\tpop %rbx" << std::endl;
-		std::cout << "\tcmpq %rax, %rbx" << std::endl;
+		// Obtenir les opérandes.
+		if (returnType == DOUBLE) {
+			std::cout << "\tfldl (%rsp)" << std::endl;
+			std::cout << "\taddq $8, %rsp" << std::endl;
+			std::cout << "\tfldl (%rsp)" << std::endl;
+			std::cout << "\taddq $8, %rsp" << std::endl;
+			std::cout << "\tfcomi %st(1)" << std::endl;
+		} else {
+			std::cout << "\tpop %rax" << std::endl;
+			std::cout << "\tpop %rbx" << std::endl;
+			std::cout << "\tcmpq %rax, %rbx" << std::endl;
+		}
 
 		switch (oprel) {
 			case EQU:
@@ -376,6 +485,7 @@ TYPE Expression() {
 
 		return BOOLEAN;
 	}
+
 	return returnType;
 }
 
@@ -520,7 +630,10 @@ void ForStatement() {
 	current = (TOKEN)lexer->yylex();  // reconnaître TO
 	std::cout << "TestFor" << nb << ":" << std::endl;
 
-	Expression();  // reconnaître Expression
+	TYPE exprType = Expression();  // reconnaître Expression
+	if (exprType != INTEGER) {
+		Error("ForStatement: L'incrément doit être entier!");
+	}
 
 	std::cout << "\tpop %rax" << std::endl;  // %rax contient le résultat
 	std::cout << "\tcmpq %rax, " << var << std::endl;
@@ -537,7 +650,7 @@ void ForStatement() {
 
 	Statement();  // reconnaître Statement
 
-	std::cout << "\taddq $1, " << var << std::endl;  // incrémenter
+	std::cout << "\taddq $1, " << var << std::endl;  // incrémenter l'entier
 	std::cout << "\tjmp TestFor" << nb << std::endl;
 
 	std::cout << "EndFor" << nb << ":" << std::endl;
@@ -588,15 +701,47 @@ void DisplayStatement() {
 
 	TYPE exprType = Expression();  // reconnaître Expression
 
-	if (exprType != INTEGER) {
-		Error("DisplayStatement: TYPE ERROR: INTEGER attendu! (" + typeString[exprType] + ")");
+	switch (exprType) {
+		case INTEGER:
+			std::cout << "\tpop %rdx"                    << std::endl;
+			std::cout << "\tmovq $FormatStringLLU, %rsi" << std::endl;
+			std::cout << "\tmovl $0, %eax"               << std::endl;
+			std::cout << "\tmovl $1, %edi"               << std::endl;
+			std::cout << "\tcall __printf_chk@PLT"       << std::endl;
+			break;
+		case BOOLEAN: {
+			unsigned long long tag = ++TagNumber;
+			std::cout << "\tpop %rdx"                << std::endl;
+			std::cout << "\tcmpq $0, %rdx"           << std::endl;
+			std::cout << "je False" << tag           << std::endl;
+			std::cout << "\tmovq $TrueString, %rsi"  << std::endl;
+			std::cout << "\tjmp Suite" << tag        << std::endl;
+			std::cout << "False" << tag << ":"       << std::endl;
+			std::cout << "\tmovq $FalseString, %rsi" << std::endl;
+			std::cout << "Suite" << tag << ":"       << std::endl;
+			std::cout << "\tmovl $0, %eax"           << std::endl;
+			std::cout << "\tmovl $1, %edi"           << std::endl;
+			std::cout << "\tcall __printf_chk@PLT"   << std::endl;
+			break;
+		}
+		case DOUBLE:
+			std::cout << "\tmovsd (%rsp), %xmm0"       << std::endl;
+			std::cout << "\tmovq $FormatStringF, %rsi" << std::endl;
+			std::cout << "\tmovl $1, %eax"             << std::endl;
+			std::cout << "\tmovl $1, %edi"             << std::endl;
+			std::cout << "\tcall __printf_chk@PLT"     << std::endl;
+			std::cout << "\taddq $8, %rsp"             << std::endl;
+			break;
+		case CHAR:
+			std::cout << "\tpop %rdx"                  << std::endl;
+			std::cout << "\tmovq $FormatStringC, %rsi" << std::endl;
+			std::cout << "\tmovl $0, %eax"             << std::endl;
+			std::cout << "\tmovl $1, %edi"             << std::endl;
+			std::cout << "\tcall __printf_chk@PLT"     << std::endl;
+			break;
+		default:
+			Error("DisplayStatement: TYPE inconnu!");
 	}
-
-	std::cout << "\tpop %rdx" << std::endl;
-	std::cout << "\tmovq $FormatStringLLU" << ", %rsi" << std::endl;
-	std::cout << "\tmovl $1, %edi" << std::endl;
-	std::cout << "\tmovl $0, %eax" << std::endl;
-	std::cout << "\tcall __printf_chk@PLT" << std::endl;
 }
 
 // Statement := AssignmentStatement | IfStatement | WhileStatement | ForStatement | BlockStatement | DisplayStatement
@@ -624,11 +769,11 @@ void Statement() {
 
 // StatementPart := Statement {";" Statement} "."
 void StatementPart() {
-	std::cout << "\t.align 8" << std::endl;
-	std::cout << "\t.text" << std::endl;
-	std::cout << "\t.globl main\t# The main function must be visible from outside" << std::endl;
-	std::cout << "main:" << std::endl;
-	std::cout << "\tmovq %rsp, %rbp\t# Save the position of the stack's top" << std::endl;
+	std::cout << "\t.text"           << std::endl;
+	std::cout << "\t.globl main"     << std::endl;
+	// std::cout << "\t.align 8"     << std::endl;
+	std::cout << "main:"             << std::endl;
+	std::cout << "\tmovq %rsp, %rbp" << std::endl;
 	std::cout << std::endl;
 
 	Statement();  // reconnaître Statement
@@ -645,16 +790,25 @@ void StatementPart() {
 	current = (TOKEN)lexer->yylex();  // reconnaître "."
 }
 
-// Type := "INTEGER" | "BOOLEAN"
+// Type := "INTEGER" | "BOOLEAN" | "DOUBLE" | "CHAR"
 TYPE Type() {
+	if (current != KEYWORD) {
+		Error("Type: KEYWORD de type attendu!");
+	}
+
 	TYPE type;
 	if (strcmp(lexer->YYText(), "INTEGER") == 0) {
 		type = INTEGER;
 	} else if (strcmp(lexer->YYText(), "BOOLEAN") == 0) {
 		type = BOOLEAN;
+	} else if (strcmp(lexer->YYText(), "DOUBLE") == 0) {
+		type = DOUBLE;
+	} else if (strcmp(lexer->YYText(), "CHAR") == 0) {
+		type = CHAR;
 	} else {
 		type = WTFT;
 	}
+
 	current = (TOKEN)lexer->yylex();  // reconnaître le type.
 	return type;
 }
@@ -668,12 +822,20 @@ void VarDeclaration() {
 		Error("VarDeclaration: ID attendu!");
 	}
 
+	// Vérification
+	if (IsDeclared(lexer->YYText())) {
+		Error("VarDeclaration: Variable '" + std::string(lexer->YYText()) + "' déjà déclarée!");
+	}
 	variables.insert(lexer->YYText());
 	current = (TOKEN)lexer->yylex();  // reconnaître Identifier
 
 	while(current == COMMA) {
 		current = (TOKEN)lexer->yylex();  // reconnaître ","
 
+		// Vérification
+		if (IsDeclared(lexer->YYText())) {
+			Error("VarDeclaration: Variable '" + std::string(lexer->YYText()) + "' déjà déclarée!");
+		}
 		variables.insert(lexer->YYText());
 		current = (TOKEN)lexer->yylex();  // reconnaître Identifier
 	}
@@ -687,6 +849,7 @@ void VarDeclaration() {
 	TYPE varType = Type();  // reconnaître Type
 
 	// 1. Déclarer et 2. Créer les variables lues.
+	// Toutes les variables sont initialisées avec la valeur 0 (0.0, false).
 	switch (varType) {
 		case INTEGER:
 			// .quad.
@@ -700,6 +863,20 @@ void VarDeclaration() {
 			for (std::string variable : variables) {
 				DeclaredVariables.insert({variable, BOOLEAN});  // déclarer
 				std::cout << variable << ":\t.quad 0" << std::endl;  // créer
+			}
+			break;
+		case DOUBLE:
+			// .double
+			for (std::string variable : variables) {
+				DeclaredVariables.insert({variable, DOUBLE});  // déclarer
+				std::cout << variable << ":\t.double 0.0" << std::endl;  // créer
+			}
+			break;
+		case CHAR:
+			// .byte
+			for (std::string variable : variables) {
+				DeclaredVariables.insert({variable, CHAR});  // déclarer
+				std::cout << variable << ":\t.byte 0" << std::endl;  // créer
 			}
 			break;
 		default:
@@ -746,18 +923,23 @@ void Program() {
 
 /// First version: Source code on standard input and assembly code on standard output.
 int main() {
-	// Header for gcc assembler / linker
+	// Header for gcc assembler / linker.
 	std::cout << "# This code was produced by VICTOR's Vcompiler. <3" << std::endl;
 	std::cout << std::endl;
 	std::cout << "\t.data" << std::endl;
 	std::cout << "FormatStringLLU:\t.string \"%llu\\n\"" << std::endl;
+	std::cout << "FormatStringF:\t.string \"%lf\\n\"" << std::endl;
+	std::cout << "FormatStringC:\t.string \"%c\\n\"" << std::endl;
+	std::cout << "TrueString:\t.string \"TRUE\\n\"" << std::endl;
+	std::cout << "FalseString:\t.string \"FALSE\\n\"" << std::endl;
 
-	// Let's proceed to the analysis and code production
+	// Let's proceed to the analysis and code production.
 	current = (TOKEN) lexer->yylex();  // déplacer la tête de lecture sur le premier token
-	Program();  // reconnaître le PROGRAMME
+	Program();  // reconnaître le PROGRAMME entier.
 
-	// Trailer for the gcc assembler / linker
+	// Trailer for the gcc assembler / linker.
 	std::cout << std::endl;
+	std::cout << "\txor %rax, %rax" << std::endl;  // valeur de retour égale à 0.
 	std::cout << "\tmovq %rbp, %rsp\t# Restore the position of the stack's top" << std::endl;
 	std::cout << "\tret\t# Return from main function" << std::endl;
 
@@ -771,96 +953,63 @@ int main() {
 /*
 
 Notes:
+	BOOLEAN .byte 0
+		8 bits, 0 étendus à 64 pour être empilés
+	CHAR .byte 0
+		8 bits, 0 étendus à 64 pour être empilés
+	INTEGER .quad 0
+		64 bits
+	DOUBLE .double 0.0
+		64 bits
 
-POUR CHAR
-a:	.byte '6'
-...
-movq $0, %rax
-movb a, %al
-push %rax
-...
-pop %rax
-... %al
+	BOOLEAN peut être stocké comme $1 et $0 sur un octet.
+	De cette manière on peut faire NOT avec:
+		movb $1, %al  # TRUE => %al : 0x00000001
+		xorl $1, %al
+			    0b 00000001 (TRUE)    &        0b 00000000 (FALSE)
+			xor 0b 00000001                xor 0b 00000001
+			  = 0b 00000000 (FALSE)          = 0b 00000001 (TRUE)
+	Faire xor 1 équivaut à faire not.
+	On ne veut toucher que le denrier bit donc on fait xor 1 (et non pas xor FF par exemple).
+	Seul le dernier bit compte.
+
+	Types compatibles ? ---> promotion de type d'expression
+	TYPES EXISTANTS: INTEGER, BOOLEAN, DOUBLE, CHAR
+		double int & int double
+		double char & char double
+		double bool & bool double
+		int char & char int
+		int bool & bool int
+		bool char & char bool
+	Expressions
+		DOUBLE +,-,*,/ INTEGER -> DOUBLE   #
+		INTEGER +,-,*,/ DOUBLE -> DOUBLE   # fild & fist
+		DOUBLE +,-,*,/ CHAR -> DOUBLE      #
+		CHAR +,-,*,/ DOUBLE -> DOUBLE      #
+		DOUBLE +,-,*,/ BOOLEAN -> DOUBLE   #
+		BOOLEAN +,-,*,/ DOUBLE -> DOUBLE   #
+		INTEGER +,-,*,/,% CHAR -> INTEGER
+		CHAR +,-,*,/,% INTEGER -> INTEGER
+		INTEGER +,-,*,/,% BOOLEAN -> INTEGER
+		BOOLEAN +,-,*,/,% INTEGER -> INTEGER
+		BOOLEAN +,-,*,/,% CHAR -> INTEGER
+		CHAR +,-,*,/,% BOOLEAN -> INTEGER
+	Assignment
+		INTEGER = BOOLEAN -> INTEGER
+		INTEGER = DOUBLE -> INTEGER  # (#include <cmath> int y = (int)std::round(x);)
+		INTEGER = CHAR -> INTEGER
+		BOOLEAN = INTEGER -> BOOLEAN  # cmp $0
+		BOOLEAN = DOUBLE -> BOOLEAN   # cmp flottante avec $0
+		BOOLEAN = CHAR -> BOOLEAN     # cmp $0
+		DOUBLE = INTEGER -> DOUBLE
+		DOUBLE = BOOLEAN -> DOUBLE
+		DOUBLE = CHAR -> DOUBLE
+		CHAR = INTEGER -> CHAR
+		CHAR = BOOLEAN -> CHAR
+		CHAR = DOUBLE -> CHAR  # (#include <cmath> int y = (int)std::round(x);)
+
 
 Questions:
+	Le type INTEGER est non signé. Que fait-on en cas de résultat négatif ?
 
-
-*/
-
-/* EXEMPLE
-
-On lit le fichier source token par token.
-(Les espaces, retours à la ligne, et tabulations sont ignorés)
-
-Exemple: FOR i := 0 TO 10 DO i := i + 1.
-
-lexer->yylex() ---> KEYWORD
-lexer->YYText() --> "FOR"
-FOR i := 0 TO 10 DO i := i + 1.
- ^
-
-lexer->yylex() ---> ID
-lexer->YYtext() --> "i"
-FOR i := 0 TO 10 DO i := i + 1.
-    ^
-
-lexer->yylex() ---> ASSIGN
-lexer->YYText() --> ":="
-FOR i := 0 TO 10 DO i := i + 1.
-       ^
-
-lexer->yylex() ---> NUMBER
-lexer->YYText() --> "0"
-FOR i := 0 TO 10 DO i := i + 1.
-         ^
-
-lexer->yylex() ---> KEYWORD
-lexer->YYText() --> "TO"
-FOR i := 0 TO 10 DO i := i + 1.
-		    ^
-
-lexer->yylex() ---> NUMBER
-lexer->YYText() --> "10"
-FOR i := 0 TO 10 DO i := i + 1.
-			   ^
-
-lexer->yylex() ---> KEYWORD
-lexer->YYText() --> "DO"
-FOR i := 0 TO 10 DO i := i + 1.
-				  ^
-
-lexer->yylex() ---> ID
-lexer->YYText() --> "i"
-FOR i := 0 TO 10 DO i := i + 1.
-					^
-
-lexer->yylex() ---> ASSIGN
-lexer->YYText() --> ":="
-FOR i := 0 TO 10 DO i := i + 1.
-					   ^
-
-lexer->yylex() ---> ID
-lexer->YYText() --> "i"
-FOR i := 0 TO 10 DO i := i + 1.
-						 ^
-
-lexer->yylex() ---> ADDOP
-lexer->YYText() --> "+"
-FOR i := 0 TO 10 DO i := i + 1.
-						   ^
-
-lexer->yylex() ---> NUMBER
-lexer->YYText() --> "1"
-FOR i := 0 TO 10 DO i := i + 1.
-						     ^
-
-lexer->yylex() ---> DOT
-lexer->YYText() --> "."
-FOR i := 0 TO 10 DO i := i + 1.
-							  ^
-
-lexer->yylex() ---> FEOF
-lexer->YYText() --> ""
-FOR i := 0 TO 10 DO i := i + 1.
-								  ^
 */
