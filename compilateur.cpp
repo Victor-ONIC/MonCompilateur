@@ -22,26 +22,27 @@
 // ForStatement := "FOR" AssignmentStatement "TO" Expression "DO" Statement
 // BlockStatement := "BEGIN" Statement {";" Statement} "END"
 // DisplayStatement := "DISPLAY" Expression
-// Statement := AssignmentStatement | IfStatement | WhileStatement | ForStatement | BlockStatement | DisplayStatement
+// CaseLabelList := Constant {"," Constant}
+// CaseListElement := CaseLabelList ":" Statement
+// CaseStatement := "CASE" Expression "OF" CaseListElement {";" CaseListElement} "END"
+// Statement := AssignmentStatement | IfStatement | WhileStatement | ForStatement | BlockStatement | DisplayStatement | CaseStatement
 //
 // StatementPart := Statement {";" Statement} "."
-// DeclarationPart := "[" Identifier {"," Identifier} "]"
-// Program := [DeclarationPart] StatementPart
-//
 // Type := "INTEGER" | "BOOLEAN" | "DOUBLE" | "CHAR"
 // VarDeclaration := Identifier {"," Identifier} ":" Type
 // DeclarationPart := "VAR" VarDeclaration {";" VarDeclaration} "."
+// Program := [DeclarationPart] StatementPart
 //
 ///
 
-#include <string>
-#include <iostream>
 #include <cstdlib>
+#include <iostream>
+#include <cstring>
+#include <string>
 #include <set>
+#include <vector>
 #include <FlexLexer.h>
 #include "tokeniser.h"
-#include <cstring>
-#include <vector>
 
 enum OPREL { EQU, DIFF, INF, SUP, INFE, SUPE, WTFR };
 enum OPADD { ADD, SUB, OR, WTFA };
@@ -58,7 +59,8 @@ std::string typeString[] = {
 	"INTEGER", "BOOLEAN", "DOUBLE", "CHAR"
 };
 
-// Les variables sont stockées sous la forme d'une struct.
+// Les variables sont stockées sous la forme d'une struct, afin d'avoir
+// un nombre variable d'attributs.
 struct Variable {
 	std::string name;
 	TYPE type;
@@ -70,15 +72,15 @@ bool operator<(const Variable& left, const Variable& right) {
 	return left.name < right.name;
 }
 
+// Stocke les variables du programme.
+std::set<Variable> DeclaredVariables;
+
 // Type du token actuellement sous la tête de lecture (id, keyword, ...).
 TOKEN current;
 
 // lexer->yylex() avance la tête de lecture et donne le type du token.
 // lexer->YYText() donne le texte associé au token lu, sous forme d'un c-string.
 FlexLexer* lexer = new yyFlexLexer;
-
-// Stocke les variables du programme.
-std::set<Variable> DeclaredVariables;
 
 // Valeur incrémentale qui permet d'avoir plusieurs étiquettes du même nom.
 unsigned long long TagNumber = 0;
@@ -90,13 +92,23 @@ bool IsDeclared(const char *id) {
 	return DeclaredVariables.find({id}) != DeclaredVariables.end();
 }
 
-/// Retourne 
-
 /// Arrêt total du programme, laissant la compilation inachevée.
 void Error(std::string s) {
 	std::cerr << "Ligne n°" << lexer->lineno() << ", lu: '" << lexer->YYText() << "' (" << tokenString[current] << ")." << std::endl;
 	std::cerr << s << std::endl;
 	exit(-1);
+}
+
+void ReadKeyword(std::string keyword) {
+	if (current != KEYWORD) {
+		Error("KEYWORD attendu!");
+	}
+
+	if (strcmp(keyword.c_str(), lexer->YYText()) != 0) {
+		Error("Mot clé " + keyword + " attendu!");
+	}
+
+	current = (TOKEN)lexer->yylex();
 }
 
 
@@ -522,14 +534,8 @@ void AssignmentStatement() {
 void IfStatement() {
 	unsigned long long nb = ++TagNumber;
 
-	if (current != KEYWORD) {
-		Error("IfStatement: KEYWORD attendu!");
-	}
-	if (strcmp("IF", lexer->YYText()) != 0) {
-		Error("IfStatement: IF keyword attendu!");
-	}
+	ReadKeyword("IF");
 
-	current = (TOKEN)lexer->yylex();  // reconnaître IF
 	std::cout << "If" << nb << ":" << std::endl;
 
 	TYPE exprType = Expression();  // reconnaître Expression
@@ -541,14 +547,7 @@ void IfStatement() {
 	std::cout << "\tcmpq $0, %rax" << std::endl;
 	std::cout << "\tje Else" << nb << std::endl;
 
-	if (current != KEYWORD) {
-		Error("IfStatement: KEYWORD attendu");
-	}
-	if (strcmp("THEN", lexer->YYText()) != 0) {
-		Error("IfStatement: THEN keyword attendu!");
-	}
-
-	current = (TOKEN)lexer->yylex();  // reconnaître THEN
+	ReadKeyword("THEN");
 
 	Statement();  // reconnaître Statement
 
@@ -568,14 +567,8 @@ void IfStatement() {
 void WhileStatement() {
 	unsigned long long nb = ++TagNumber;
 
-	if (current != KEYWORD) {
-		Error("WhileStatement: KEYWORD attendu!");
-	}
-	if (strcmp("WHILE", lexer->YYText()) != 0) {
-		Error("WhileStatement: WHILE keyword attendu!");
-	}
+	ReadKeyword("WHILE");
 
-	current = (TOKEN)lexer->yylex();  // reconnaître WHILE
 	std::cout << "TestWhile" << nb << ":" << std::endl;
 
 	TYPE exprType = Expression();  // reconnaître Expression
@@ -587,47 +580,43 @@ void WhileStatement() {
 	std::cout << "\tcmpq $0, %rax" << std::endl;
 	std::cout << "\tje EndWhile" << nb << std::endl;
 
-	if (current != KEYWORD) {
-		Error("WhileStatement: KEYWORD attendu");
-	}
-	if (strcmp("DO", lexer->YYText()) != 0) {
-		Error("WhileStatement: DO keyword attendu!");
-	}
-
-	current = (TOKEN)lexer->yylex();  // reconnaître DO
+	ReadKeyword("DO");
 
 	Statement();  // reconnaître Statement
 
 	std::cout << "\tjmp TestWhile" << nb << std::endl;
-
 	std::cout << "EndWhile" << nb << ":" << std::endl;
 }
 
-// ForStatement := "FOR" AssignmentStatement "TO" Expression "DO" Statement
+// ForStatement := "FOR" AssignmentStatement ("TO" | "DOWNTO") Expression "DO" Statement
 void ForStatement() {
 	unsigned long long nb = ++TagNumber;
 
-	if (current != KEYWORD) {
-		Error("ForStatement: KEYWORD attendu!");
-	}
-	if (strcmp("FOR", lexer->YYText()) != 0) {
-		Error("ForStatement: FOR keyword attendu!");
-	}
+	ReadKeyword("FOR");
 
-	current = (TOKEN)lexer->yylex();  // reconnaître FOR
 	std::string var = lexer->YYText();  // nom de la variable utilisée lors de l'incrémentation (prochain token)
 	std::cout << "For" << nb << ":" << std::endl;
 
 	AssignmentStatement();  // reconnaître AssignmentStatement
 
 	if (current != KEYWORD) {
-		Error("ForStatement: KEYWORD attendu!");
+		Error("KEYWORD attendu!");
 	}
-	if (strcmp("TO", lexer->YYText()) != 0) {
-		Error("ForStatement: TO keyword attendu!");
+	if (strcmp("TO", lexer->YYText()) != 0 && strcmp("DOWNTO", lexer->YYText()) != 0) {
+		Error("Mots clés 'TO' ou 'DOWNTO' attendus!");
 	}
 
-	current = (TOKEN)lexer->yylex();  // reconnaître TO
+	std::string jump;
+	std::string increment;
+	if (strcmp("TO", lexer->YYText()) == 0) {
+		jump = "\tja EndFor";
+		increment = "\taddq $1, ";
+	} else {
+		jump = "\tjb EndFor";
+		increment = "\tsubq $1, ";
+	}
+	current = (TOKEN)lexer->yylex();
+
 	std::cout << "TestFor" << nb << ":" << std::endl;
 
 	TYPE exprType = Expression();  // reconnaître Expression
@@ -637,22 +626,14 @@ void ForStatement() {
 
 	std::cout << "\tpop %rax" << std::endl;  // %rax contient le résultat
 	std::cout << "\tcmpq %rax, " << var << std::endl;
-	std::cout << "\tja EndFor" << nb << std::endl;
+	std::cout << jump << nb << std::endl;
 	
-	if (current != KEYWORD) {
-		Error("ForStatement: KEYWORD attendu!");
-	}
-	if (strcmp("DO", lexer->YYText()) != 0) {
-		Error("ForStatement: DO keyword attendu!");
-	}
-
-	current = (TOKEN)lexer->yylex();  // reconnaître DO
+	ReadKeyword("DO");
 
 	Statement();  // reconnaître Statement
 
-	std::cout << "\taddq $1, " << var << std::endl;  // incrémenter l'entier
+	std::cout << increment << var << std::endl;  // incrémenter l'entier
 	std::cout << "\tjmp TestFor" << nb << std::endl;
-
 	std::cout << "EndFor" << nb << ":" << std::endl;
 }
 
@@ -660,14 +641,8 @@ void ForStatement() {
 void BlockStatement() {
 	unsigned long long nb = ++TagNumber;
 
-	if (current != KEYWORD) {
-		Error("BlockStatement: KEYWORD attendu!");
-	}
-	if (strcmp("BEGIN", lexer->YYText()) != 0) {
-		Error("BlockStatement: BEGIN keyword attendu!");
-	}
+	ReadKeyword("BEGIN");
 
-	current = (TOKEN)lexer->yylex();  // reconnaître BEGIN
 	std::cout << "Begin" << nb << ":" << std::endl;
 
 	Statement();  // reconnaître Statement
@@ -677,27 +652,14 @@ void BlockStatement() {
 		Statement();  // reconnaître Statement
 	}
 
-	if (current != KEYWORD) {
-		Error("BlockStatement: KEYWORD attendu!");
-	}
-	if (strcmp("END", lexer->YYText()) != 0) {
-		Error("BlockStatement: END keyword attendu!");
-	}
+	ReadKeyword("END");
 
-	current = (TOKEN)lexer->yylex();  // reconnaître END
 	std::cout << "End" << nb << ":" << std::endl;
 }
 
 // DisplayStatement := "DISPLAY" Expression
 void DisplayStatement() {
-	if (current != KEYWORD) {
-		Error("DisplayStatement: KEYWORD attendu!");
-	}
-	if (strcmp("DISPLAY", lexer->YYText()) != 0) {
-		Error("DisplayStatement: DISPLAY keyword attendu!");
-	}
-
-	current = (TOKEN)lexer->yylex();  // reconnaître DISPLAY
+	ReadKeyword("DISPLAY");
 
 	TYPE exprType = Expression();  // reconnaître Expression
 
@@ -713,7 +675,7 @@ void DisplayStatement() {
 			unsigned long long tag = ++TagNumber;
 			std::cout << "\tpop %rdx"                << std::endl;
 			std::cout << "\tcmpq $0, %rdx"           << std::endl;
-			std::cout << "je False" << tag           << std::endl;
+			std::cout << "\tje False" << tag         << std::endl;
 			std::cout << "\tmovq $TrueString, %rsi"  << std::endl;
 			std::cout << "\tjmp Suite" << tag        << std::endl;
 			std::cout << "False" << tag << ":"       << std::endl;
@@ -744,7 +706,121 @@ void DisplayStatement() {
 	}
 }
 
-// Statement := AssignmentStatement | IfStatement | WhileStatement | ForStatement | BlockStatement | DisplayStatement
+// Constant := Number | Float | Character
+TYPE Constant() {
+	TYPE returnType;
+
+	switch (current) {
+		case NUMBER:
+			returnType = Number();
+			break;
+		case FLOATCONST:
+			returnType = Float();
+			break;
+		case CHARCONST:
+			returnType = Character();
+			break;
+		default:
+			Error("Constant: Constante attendue!");
+	}
+
+	return returnType;
+}
+
+// CaseLabelList := Constant {"," Constant}
+TYPE CaseLabelList() {
+	unsigned long long tag = TagNumber;  // numéro d'étiquette du Case actuel
+
+	TYPE returnType = Constant();  // reconnaître la constante
+
+	std::cout << "\tpop %rax" << std::endl;
+	std::cout << "\tcmpq (%rsp), %rax" << std::endl;
+	std::cout << "\tje Statement" << tag << std::endl;
+
+	while (current == COMMA) {
+		current = (TOKEN)lexer->yylex();  // reconnaître ","
+		TYPE constType = Constant();  // reconnaître la constante
+
+		if (returnType != constType) {
+			Error("CaseLabelList: Les constantes doivent avoir le même type!");
+		}
+
+		std::cout << "\tpop %rax" << std::endl;
+		std::cout << "\tcmpq (%rsp), %rax" << std::endl;
+		std::cout << "\tje Statement" << tag << std::endl;
+	}
+
+	return returnType;
+}
+
+// CaseListElement := CaseLabelList ":" Statement
+// Paramètre - endTagNumber: tous les cas ont le même numéro d'étiquette pour la fin du CASE.
+TYPE CaseListElement(unsigned long long endTagNumber) {
+	unsigned long long tag = TagNumber;  // numéro d'étiquette du cas actuel
+	// unsigned long long nextTag = tag + 1;  // numéro du prochain cas
+
+	TYPE labelType = CaseLabelList();  // reconnaître CaseLabelList
+
+	if (current != COLON) {
+		Error("CaseListElement: COLON attendu!");
+	}
+
+	current = (TOKEN)lexer->yylex();  // reconnaître ":"
+
+	std::cout << "\tjmp Case" << tag+1 << std::endl;
+	std::cout << "Statement" << tag << ":" << std::endl;
+
+	Statement();  // reconnaître Statement
+
+	std::cout << "\tjmp EndCase" << endTagNumber << std::endl;
+
+	// Cette étiquette doit correspondre avec le jump juste au dessus.
+	std::cout << "Case" << tag+1 << ":" << std::endl;
+
+	return labelType;
+}
+
+// CaseStatement := "CASE" Expression "OF" CaseListElement {";" CaseListElement} [";" "ELSE" Statement] "END"
+void CaseStatement() {
+	unsigned long long tag = ++TagNumber;
+
+	ReadKeyword("CASE");
+
+	std::cout << "Case" << tag << ":" << std::endl;
+
+	TYPE exprType = Expression();  // reconnaître Expression
+
+	ReadKeyword("OF");
+
+	TYPE labelType = CaseListElement(tag);  // reconnaître CaseListElement
+
+	if (exprType != labelType) {
+		Error("CaseStatement: Types incompatibles: " + typeString[exprType] + " et " + typeString[labelType]);
+	}
+
+	while (current == SEMICOLON) {
+		current = (TOKEN)lexer->yylex();  // reconnaître ";"
+
+		if (current == KEYWORD && strcmp("ELSE", lexer->YYText()) == 0) {
+			current = (TOKEN)lexer->yylex();
+			Statement();
+			break;
+		}
+	
+		TYPE labelType = CaseListElement(tag);  // reconnaître CaseListElement
+
+		if (exprType != labelType) {
+			Error("CaseStatement: Types incompatibles: " + typeString[exprType] + " et " + typeString[labelType]);
+		}
+	}
+
+	ReadKeyword("END");
+
+	std::cout << "EndCase" << tag << ":" << std::endl;
+	std::cout << "\taddq $8, %rsp" << std::endl;
+}
+
+// Statement := AssignmentStatement | IfStatement | WhileStatement | ForStatement | BlockStatement | DisplayStatement | CaseStatement
 void Statement() {
 	if (current == ID) {
 		AssignmentStatement();
@@ -759,6 +835,8 @@ void Statement() {
 			BlockStatement();
 		} else if (strcmp("DISPLAY", lexer->YYText()) == 0) {
 			DisplayStatement();
+		} else if (strcmp("CASE", lexer->YYText()) == 0) {
+			CaseStatement();
 		} else {
 			Error("Statement: Unexpected KEYWORD!");
 		}
@@ -886,14 +964,7 @@ void VarDeclaration() {
 
 // DeclarationPart := "VAR" VarDeclaration {";" VarDeclaration} "."
 void DeclarationPart() {
-	if (current != KEYWORD) {
-		Error("DeclarationPart: KEYWORD attendu!");
-	}
-	if (strcmp("VAR", lexer->YYText()) != 0) {
-		Error("DeclarationPart: VAR keyword attendu!");
-	}
-
-	current = (TOKEN)lexer->yylex();  // reconnaître "VAR"
+	ReadKeyword("VAR");
 
 	VarDeclaration();  // reconnaître VarDeclaration
 
@@ -939,7 +1010,7 @@ int main() {
 
 	// Trailer for the gcc assembler / linker.
 	std::cout << std::endl;
-	std::cout << "\txor %rax, %rax" << std::endl;  // valeur de retour égale à 0.
+	std::cout << "\tmovq $0, %rax" << std::endl;  // valeur de retour de main égale à 0.
 	std::cout << "\tmovq %rbp, %rsp\t# Restore the position of the stack's top" << std::endl;
 	std::cout << "\tret\t# Return from main function" << std::endl;
 
@@ -1010,6 +1081,34 @@ Notes:
 
 
 Questions:
-	Le type INTEGER est non signé. Que fait-on en cas de résultat négatif ?
+	ordre des opérations fpu ?
+	le résultat d'une opération est toujours empilé ? plutôt (dest op src => dest) ?
+
+	est-ce qu'on a le droit à tous les documents lors de l'examen ?
+
+*/
+
+/*
+
+TP à rendre avant l'examen écrit. Voir date limite du dépôt.
+
+Faire un petit texte qui précise les différences avec la version finale du prof.
+Ce qui est commun avec la version du prof (ex. à partir du TP1, puis après c'est moi).
+Lister, résumer ce qu'on a fait globalement. Pas trop de détails.
+Attirer l'attention sur ce qu'on a fait de différent, de mieux, de particulier.
+
+Boucle FOR fonctionnelle c'est la moyenne: 10/20.
+
+Pour avoir 20
+Propre
+Avoir fait quelque chose qui n'a pas été enseigné. Aller au delà du cours. Attaquer des problèmes non abordés. Qui apporte quelque chose.
+Ex: les procédures avec des paramètres.
+Ex: les RECORDs (structures, types définis par l'utilisateur).
+
+À IMPLÉMENTER:
+compatibilité des types
+STRINGCONST
+revoir le système d'erreurs
+étiquettes redondantes qui aident à la lisibilité du code assembleur ? ex: Ifn
 
 */

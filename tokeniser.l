@@ -90,7 +90,7 @@ mulop	(\*|\/|%|\&\&)
 relop	(\<|\>|"=="|\<=|\>=|!=)
 
 	// keyword: IF, THEN, ELSE, WHILE, DO, FOR, TO, BEGIN, ou END
-keyword (IF|THEN|ELSE|WHILE|DO|FOR|TO|BEGIN|END|DISPLAY|TRUE|FALSE|VAR|INTEGER|BOOLEAN|DOUBLE|CHAR)
+keyword (IF|THEN|ELSE|WHILE|DO|FOR|TO|DOWNTO|BEGIN|END|DISPLAY|CASE|OF|TRUE|FALSE|VAR|INTEGER|BOOLEAN|DOUBLE|CHAR)
 
 	// unknown: toute suite de un ou plus caractères DIFFÉRENTS de
 	// ", A-Z, a-z, 0-9, ' ', \n, \r, \t, (, ), <, >, =, !, %, &, |, }, -, ;, ou .
@@ -120,12 +120,12 @@ unknown [^\"A-Za-z0-9 \n\r\t\(\)\<\>\=\!\%\&\|\}\-\;\.]+
 {addop}		return ADDOP;
 {mulop}		return MULOP;
 {relop}		return RELOP;
-{number}	return NUMBER;
 {float} 	return FLOATCONST;
+{number}	return NUMBER;
 {keyword}	return KEYWORD;
 {id}		return ID;
-{stringconst}	return STRINGCONST;
 {character} 	return CHARCONST;
+{stringconst}	return STRINGCONST;
 "["			return LBRACKET;
 "]"			return RBRACKET;
 ","			return COMMA;

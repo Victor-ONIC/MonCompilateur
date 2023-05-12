@@ -1,10 +1,6 @@
 (* Partie déclaration *)
 VAR
-    a, b : INTEGER.
+    a : INTEGER.
 
 (* Partie instructions *)
-BEGIN
-    a := 1;
-    b := 2;
-    DISPLAY a / b
-END.
+FOR a := 10 DOWNTO 1 DO DISPLAY a.
