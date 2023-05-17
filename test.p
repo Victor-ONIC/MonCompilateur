@@ -1,6 +1,7 @@
 (* Partie déclaration *)
 VAR
-    a : INTEGER.
+    a, b : DOUBLE.
 
 (* Partie instructions *)
-FOR a := 10 DOWNTO 1 DO DISPLAY a.
+a := -10.0;
+IF a < 0 THEN DISPLAY a ELSE DISPLAY 0.

@@ -1,6 +1,6 @@
 (* Partie déclaration *)
 VAR
-    CONSTANTE, number : INTEGER;
+    CONSTANTE, number : UINTEGER;
     numberf : DOUBLE;
     isTrue : BOOLEAN;
     letter : CHAR.
@@ -49,3 +49,33 @@ BEGIN
     DISPLAY (5 * 8) - (1 + 4)
 
 END.
+
+(*
+69420
+694200
+624780
+555360
+485940
+416520
+347100
+277680
+208260
+138840
+69420
+1
+1
+1
+1
+1
+1
+0
+0
+0
+1
+69420
+50
+3.141593
+FALSE
+?
+35
+*)

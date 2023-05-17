@@ -60,7 +60,7 @@
 stringconst  \"[^\n"]+\"
 
 	// character: tout caractère entre deux '.
-character	\'.\'
+character	\'([^\'\\]|\\.)\'
 
 	// ws: toute suite de ' ', \t, \n, ou \r.
 ws      [ \t\n\r]+
@@ -75,10 +75,10 @@ digit   [0-9]
 number  {digit}+
 
 	// float: un ou plusieurs chiffres, suivis d'un point, suivi d'un ou plusieurs chiffres.
-float	{digit}+\.{digit}+
+float	-?{digit}+\.{digit}+
 
 	// id: un caractère suivi d'une suite de 0 ou plus caractères ou chiffres.
-id		{alpha}({alpha}|{digit})*
+id		{alpha}({alpha}|{digit}|_)*
 
 	// addop: +, -, ou ||
 addop	(\+|\-|\|\|)
@@ -90,7 +90,7 @@ mulop	(\*|\/|%|\&\&)
 relop	(\<|\>|"=="|\<=|\>=|!=)
 
 	// keyword: IF, THEN, ELSE, WHILE, DO, FOR, TO, BEGIN, ou END
-keyword (IF|THEN|ELSE|WHILE|DO|FOR|TO|DOWNTO|BEGIN|END|DISPLAY|CASE|OF|TRUE|FALSE|VAR|INTEGER|BOOLEAN|DOUBLE|CHAR)
+keyword (IF|THEN|ELSE|WHILE|DO|FOR|TO|DOWNTO|BEGIN|END|DISPLAY|CASE|OF|TRUE|FALSE|VAR|UINTEGER|BOOLEAN|DOUBLE|CHAR)
 
 	// unknown: toute suite de un ou plus caractères DIFFÉRENTS de
 	// ", A-Z, a-z, 0-9, ' ', \n, \r, \t, (, ), <, >, =, !, %, &, |, }, -, ;, ou .
