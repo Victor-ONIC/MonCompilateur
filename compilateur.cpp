@@ -290,14 +290,22 @@ TYPE Factor() {
 	TYPE returnType;
 
 	if (current == NOT) {
+		unsigned long long tag = ++TagNumber;
+
 		current = (TOKEN)lexer->yylex();
 
 		TYPE factorType = Factor();
-		if (factorType != BOOLEAN) {
-			Error("(Factor) Erreur: Type booléen attendu ! (" + typeString[factorType] + " lu)");
-		}
 
-		std::cout << "\tnotq (%rsp)" << std::endl;
+		std::cout << "\tcmpq $0, (%rsp)" 				<< std::endl;
+		std::cout << "\tje Faux" << tag					<< std::endl;
+		std::cout << "\tmovq $FFFFFFFFFFFFFFFF, %rax" 	<< std::endl;
+		std::cout << "\tjmp Suite" << tag				<< std::endl;
+		std::cout << "Faux" << tag << ":" 				<< std::endl;
+		std::cout << "\tmovq $0, %rax" 					<< std::endl;
+		std::cout << "Suite" << tag << ":" 				<< std::endl;
+		std::cout << "\tnotq %rax" 						<< std::endl;
+		std::cout << "\tpush %rax" 						<< std::endl;
+
 		returnType = BOOLEAN;
 
 	} else if (current == LPARENT) {
@@ -1160,8 +1168,6 @@ Ex: les procédures avec des paramètres.
 Ex: les RECORDs (structures, types définis par l'utilisateur).
 
 À IMPLÉMENTER:
-- signés (int et float (reconnaître -))
-- implicit cast (il reste !Factor)
 - cast explicite 
 - write
 - fonctions
@@ -1169,6 +1175,7 @@ Ex: les RECORDs (structures, types définis par l'utilisateur).
 - scope (stocker distance par rapport au sommet de la pile | 8 * position dans le scope)
 - stringconst (retirer les \n des FormatStrings)
 - restructurer tout !!! (retirer commentaires inutiles, commenter fonctions)
+- entiers signés
 
 */
 
@@ -1192,5 +1199,71 @@ struct Function {
 
 
 PROTOTYPE: FORWARD?
+
+
+
+
+
+
+void FunctionStatement(void){
+    if(current != KEYWORD && strcmp(lexer->YYText(), "FUNCTION") != 0) {
+        Error("FUNCTION keyword attendu");
+    }
+    current = (TOKEN)lexer->yylex();
+    if(current != ID){
+        Error("Identificateur attendu");
+    }
+    string function_identifier = lexer->YYText();
+
+    if(DeclaredFunctions.find(function_identifier) != DeclaredFunctions.end()){
+        Error("Fonction déjà déclarée");
+    }
+    current = (TOKEN)lexer->yylex();
+
+    Function function;
+
+    if(current != LPARENT){
+        Error("Caractère '(' attendu");
+    }
+
+    current = (TOKEN)lexer->yylex();
+
+    map<string, enum TYPES> arguments = map<string, enum TYPES>();
+
+	do {
+        current = (TOKEN)lexer->yylex(); ???
+        if(current != ID){
+            Error("Identificateur attendu");
+        }
+        string argument_identifier = lexer->YYText();
+        current = (TOKEN)lexer->yylex();
+        if(current != COLON){
+            Error("Caractère ':' attendu");
+        }
+        TYPES argument_type = Type();
+        arguments[argument_identifier] = argument_type;
+        current = (TOKEN)lexer->yylex();
+    } while (current == COMMA);
+
+    function.arguments = arguments;
+
+    if(current != RPARENT){
+        Error("Caractère ')' attendu");
+    }
+
+    current = (TOKEN)lexer->yylex();
+
+    if(current != COLON){
+        Error("Caractère ':' attendu");
+    }
+
+    current = (TOKEN)lexer->yylex();
+
+    function.return_type = Type();
+
+    DeclaredFunctions[function_identifier] = function;
+
+    BlockStatement();
+}
 
 */
