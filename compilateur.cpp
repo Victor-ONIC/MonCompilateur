@@ -23,8 +23,8 @@
 // BlockStatement := "BEGIN" Statement {";" Statement} "END"
 // DisplayStatement := "DISPLAY" Expression
 // CaseLabelList := Constant {"," Constant}
-// CaseListElement := CaseLabelList ":" Statement
-// CaseStatement := "CASE" Expression "OF" CaseListElement {";" CaseListElement} "END"
+// CaseElement := CaseLabelList ":" Statement
+// CaseStatement := "CASE" Expression "OF" CaseElement {";" CaseElement} "END"
 // Statement := AssignmentStatement | IfStatement | WhileStatement | ForStatement | BlockStatement | DisplayStatement | CaseStatement
 //
 // StatementPart := Statement {";" Statement} "."
@@ -120,62 +120,6 @@ bool IsIntegral(TYPE type) {
 TYPE Expression();  // Called by Term and calls Term
 void Statement();  // Cross references between statement parts
 
-// MultiplicativeOperator := "*" | "/" | "%" | "&&"
-OPMUL MultiplicativeOperator() {
-	OPMUL opmul;
-	if (strcmp(lexer->YYText(), "*") == 0) {
-		opmul = MUL;
-	} else if (strcmp(lexer->YYText(), "/") == 0) {
-		opmul = DIV;
-	} else if (strcmp(lexer->YYText(), "%") == 0) {
-		opmul = MOD;
-	} else if (strcmp(lexer->YYText(), "&&") == 0) {
-		opmul = AND;
-	} else {
-		opmul = WTFM;
-	}
-	current = (TOKEN)lexer->yylex();  // reconnaître l'opérateur
-	return opmul;
-}
-
-// AdditiveOperator := "+" | "-" | "||"
-OPADD AdditiveOperator() {
-	OPADD opadd;
-	if (strcmp(lexer->YYText(), "+") == 0) {
-		opadd=ADD;
-	} else if (strcmp(lexer->YYText(), "-") == 0) {
-		opadd=SUB;
-	} else if (strcmp(lexer->YYText(), "||") == 0) {
-		opadd=OR;
-	} else {
-		opadd=WTFA;
-	}
-	current = (TOKEN)lexer->yylex();  // reconnaître l'opérateur
-	return opadd;
-}
-
-// RelationalOperator := "==" | "!=" | "<" | ">" | "<=" | ">="  
-OPREL RelationalOperator() {
-	OPREL oprel;
-	if(strcmp(lexer->YYText(),"==") == 0) {
-		oprel = EQU;
-	} else if(strcmp(lexer->YYText(),"!=") == 0) {
-		oprel = DIFF;
-	} else if(strcmp(lexer->YYText(),"<") == 0) {
-		oprel = INF;
-	} else if(strcmp(lexer->YYText(),">") == 0) {
-		oprel = SUP;
-	} else if(strcmp(lexer->YYText(),"<=") == 0) {
-		oprel = INFE;
-	} else if(strcmp(lexer->YYText(),">=") == 0) {
-		oprel = SUPE;
-	} else {
-		oprel = WTFR;
-	}
-	current = (TOKEN)lexer->yylex();  // reconnaître l'opérateur
-	return oprel;
-}
-
 TYPE Identifier() {
 	if (current != ID) {
 		Error("(Identifier) Erreur: Identifiant attendu!");
@@ -258,6 +202,29 @@ TYPE String() {
 	return UINTEGER;
 }
 
+// Type := "UINTEGER" | "BOOLEAN" | "DOUBLE" | "CHAR"
+TYPE Type() {
+	if (current != KEYWORD) {
+		Error("(Type) Erreur: Nom de type attendu!");
+	}
+
+	TYPE type;
+	if (strcmp(lexer->YYText(), "UINTEGER") == 0) {
+		type = UINTEGER;
+	} else if (strcmp(lexer->YYText(), "BOOLEAN") == 0) {
+		type = BOOLEAN;
+	} else if (strcmp(lexer->YYText(), "DOUBLE") == 0) {
+		type = DOUBLE;
+	} else if (strcmp(lexer->YYText(), "CHAR") == 0) {
+		type = CHAR;
+	} else {
+		type = WTFT;
+	}
+
+	current = (TOKEN)lexer->yylex();
+	return type;
+}
+
 // Constant := Number | Boolean | Float | Character | String
 TYPE Constant() {
 	TYPE returnType;
@@ -325,6 +292,24 @@ TYPE Factor() {
 	}
 
 	return returnType;
+}
+
+// MultiplicativeOperator := "*" | "/" | "%" | "&&"
+OPMUL MultiplicativeOperator() {
+	OPMUL opmul;
+	if (strcmp(lexer->YYText(), "*") == 0) {
+		opmul = MUL;
+	} else if (strcmp(lexer->YYText(), "/") == 0) {
+		opmul = DIV;
+	} else if (strcmp(lexer->YYText(), "%") == 0) {
+		opmul = MOD;
+	} else if (strcmp(lexer->YYText(), "&&") == 0) {
+		opmul = AND;
+	} else {
+		opmul = WTFM;
+	}
+	current = (TOKEN)lexer->yylex();  // reconnaître l'opérateur
+	return opmul;
 }
 
 // Term := Factor {MultiplicativeOperator Factor}
@@ -433,6 +418,22 @@ TYPE Term() {
 	return returnType;
 }
 
+// AdditiveOperator := "+" | "-" | "||"
+OPADD AdditiveOperator() {
+	OPADD opadd;
+	if (strcmp(lexer->YYText(), "+") == 0) {
+		opadd=ADD;
+	} else if (strcmp(lexer->YYText(), "-") == 0) {
+		opadd=SUB;
+	} else if (strcmp(lexer->YYText(), "||") == 0) {
+		opadd=OR;
+	} else {
+		opadd=WTFA;
+	}
+	current = (TOKEN)lexer->yylex();  // reconnaître l'opérateur
+	return opadd;
+}
+
 // SimpleExpression := Term {AdditiveOperator Term}
 TYPE SimpleExpression(){
 	TYPE returnType = Term();
@@ -530,6 +531,28 @@ TYPE SimpleExpression(){
 	return returnType;
 }
 
+// RelationalOperator := "==" | "!=" | "<" | ">" | "<=" | ">="  
+OPREL RelationalOperator() {
+	OPREL oprel;
+	if(strcmp(lexer->YYText(),"==") == 0) {
+		oprel = EQU;
+	} else if(strcmp(lexer->YYText(),"!=") == 0) {
+		oprel = DIFF;
+	} else if(strcmp(lexer->YYText(),"<") == 0) {
+		oprel = INF;
+	} else if(strcmp(lexer->YYText(),">") == 0) {
+		oprel = SUP;
+	} else if(strcmp(lexer->YYText(),"<=") == 0) {
+		oprel = INFE;
+	} else if(strcmp(lexer->YYText(),">=") == 0) {
+		oprel = SUPE;
+	} else {
+		oprel = WTFR;
+	}
+	current = (TOKEN)lexer->yylex();  // reconnaître l'opérateur
+	return oprel;
+}
+
 /// Produit le code pour calculer l'expression, et place le résultat au sommet de la pile.
 // Expression := SimpleExpression [RelationalOperator SimpleExpression]
 TYPE Expression() {
@@ -614,6 +637,26 @@ TYPE Expression() {
 	return returnType;
 }
 
+// BlockStatement := "BEGIN" Statement {";" Statement} "END"
+void BlockStatement() {
+	unsigned long long tag = ++TagNumber;
+
+	ReadKeyword("BEGIN");
+
+	std::cout << "Begin" << tag << ":" << std::endl;
+
+	Statement();  // reconnaître Statement
+
+	while (current == SEMICOLON) {
+		current = (TOKEN)lexer->yylex();  // reconnaître ";"
+		Statement();  // reconnaître Statement
+	}
+
+	ReadKeyword("END");
+
+	std::cout << "End" << tag << ":" << std::endl;
+}
+
 // AssignmentStatement := Identifier ":=" Expression
 void AssignmentStatement() {
 	if (current != ID) {
@@ -635,14 +678,28 @@ void AssignmentStatement() {
 
 	TYPE exprType = Expression();  // reconnaître Expression
 
-	if (variableType != exprType) {
-		Error("(AssignmentStatement) Erreur: Types incompatibles (" + typeString[variableType] + " et " + typeString[exprType] + ")");
+	switch (variableType) {
+		case UINTEGER:
+		case BOOLEAN:
+		case CHAR:
+			if (exprType == DOUBLE) {
+				// Arrondir à l'entier le plus proche.
+				std::cout << "\tfldl (%rsp)" << std::endl;
+				std::cout << "\tfistpq (%rsp)" << std::endl;
+			}
+			break;
+		case DOUBLE:
+			if (IsIntegral(exprType)) {
+				std::cout << "\tfild (%rsp)" << std::endl;
+				std::cout << "\tfstpl (%rsp)" << std::endl;
+			}
+			break;
 	}
 
 	std::cout << "\tpop " << variable << "\t# Assign" << std::endl;
 }
 
-// IfStatement := "IF" Expression "THEN" Statement [ "ELSE" Statement ]
+// IfStatement := "IF" Expression "THEN" Statement ["ELSE" Statement]
 void IfStatement() {
 	unsigned long long tag = ++TagNumber;
 
@@ -749,26 +806,6 @@ void ForStatement() {
 	std::cout << "EndFor" << tag << ":" << std::endl;
 }
 
-// BlockStatement := "BEGIN" Statement {";" Statement} "END"
-void BlockStatement() {
-	unsigned long long tag = ++TagNumber;
-
-	ReadKeyword("BEGIN");
-
-	std::cout << "Begin" << tag << ":" << std::endl;
-
-	Statement();  // reconnaître Statement
-
-	while (current == SEMICOLON) {
-		current = (TOKEN)lexer->yylex();  // reconnaître ";"
-		Statement();  // reconnaître Statement
-	}
-
-	ReadKeyword("END");
-
-	std::cout << "End" << tag << ":" << std::endl;
-}
-
 // DisplayStatement := "DISPLAY" Expression
 void DisplayStatement() {
 	ReadKeyword("DISPLAY");
@@ -844,15 +881,15 @@ TYPE CaseLabelList() {
 	return returnType;
 }
 
-// CaseListElement := CaseLabelList ":" Statement
+// CaseElement := CaseLabelList ":" Statement
 // Paramètre - endTagNumber: tous les cas ont le même numéro d'étiquette pour la fin du CASE.
-TYPE CaseListElement(unsigned long long endTagNumber) {
+TYPE CaseElement(unsigned long long endTagNumber) {
 	unsigned long long tag = TagNumber;  // numéro d'étiquette du cas actuel
 
 	TYPE labelType = CaseLabelList();  // reconnaître CaseLabelList
 
 	if (current != COLON) {
-		Error("(CaseListElement) Erreur: Symbole `:` attendu!");
+		Error("(CaseElement) Erreur: Symbole `:` attendu!");
 	}
 
 	current = (TOKEN)lexer->yylex();  // reconnaître ":"
@@ -870,7 +907,7 @@ TYPE CaseListElement(unsigned long long endTagNumber) {
 	return labelType;
 }
 
-// CaseStatement := "CASE" Expression "OF" CaseListElement {";" CaseListElement} [";" "ELSE" Statement] "END"
+// CaseStatement := "CASE" Expression "OF" CaseElement {";" CaseElement} [";" "ELSE" Statement] "END"
 void CaseStatement() {
 	unsigned long long tag = ++TagNumber;
 
@@ -885,7 +922,7 @@ void CaseStatement() {
 
 	ReadKeyword("OF");
 
-	TYPE labelType = CaseListElement(tag);  // reconnaître CaseListElement
+	TYPE labelType = CaseElement(tag);  // reconnaître CaseElement
 
 	if (exprType != labelType) {
 		Error("(CaseStatement) Erreur: Types incompatibles: " + typeString[exprType] + " et " + typeString[labelType]);
@@ -900,7 +937,7 @@ void CaseStatement() {
 			break;
 		}
 	
-		TYPE labelType = CaseListElement(tag);  // reconnaître CaseListElement
+		TYPE labelType = CaseElement(tag);  // reconnaître CaseElement
 
 		if (exprType != labelType) {
 			Error("(CaseStatement) Erreur: Types incompatibles: " + typeString[exprType] + " et " + typeString[labelType]);
@@ -959,29 +996,6 @@ void StatementPart() {
 	}
 
 	current = (TOKEN)lexer->yylex();  // reconnaître "."
-}
-
-// Type := "UINTEGER" | "BOOLEAN" | "DOUBLE" | "CHAR"
-TYPE Type() {
-	if (current != KEYWORD) {
-		Error("(Type) Erreur: Nom de type attendu!");
-	}
-
-	TYPE type;
-	if (strcmp(lexer->YYText(), "UINTEGER") == 0) {
-		type = UINTEGER;
-	} else if (strcmp(lexer->YYText(), "BOOLEAN") == 0) {
-		type = BOOLEAN;
-	} else if (strcmp(lexer->YYText(), "DOUBLE") == 0) {
-		type = DOUBLE;
-	} else if (strcmp(lexer->YYText(), "CHAR") == 0) {
-		type = CHAR;
-	} else {
-		type = WTFT;
-	}
-
-	current = (TOKEN)lexer->yylex();  // reconnaître le type.
-	return type;
 }
 
 // VarDeclaration := Identifier {"," Identifier} ":" Type
@@ -1114,43 +1128,8 @@ int main() {
 	return 0;
 }
 
+// Consignes + À IMPLÉMENTER
 /*
-
-Notes:
-	Expressions
-		DOUBLE +,-,*,/ UINTEGER -> DOUBLE   #
-		UINTEGER +,-,*,/ DOUBLE -> DOUBLE   # fild & fist
-		DOUBLE +,-,*,/ CHAR -> DOUBLE       #
-		CHAR +,-,*,/ DOUBLE -> DOUBLE       #
-		DOUBLE +,-,*,/ BOOLEAN -> DOUBLE    #
-		BOOLEAN +,-,*,/ DOUBLE -> DOUBLE    #
-		UINTEGER +,-,*,/,% CHAR -> UINTEGER
-		CHAR +,-,*,/,% UINTEGER -> UINTEGER
-		UINTEGER +,-,*,/,% BOOLEAN -> UINTEGER
-		BOOLEAN +,-,*,/,% UINTEGER -> UINTEGER
-		BOOLEAN +,-,*,/,% CHAR -> UINTEGER
-		CHAR +,-,*,/,% BOOLEAN -> UINTEGER
-	Assignment
-		UINTEGER = BOOLEAN -> UINTEGER
-		UINTEGER = DOUBLE -> UINTEGER  # (#include <cmath> int y = (int)std::round(x);)
-		UINTEGER = CHAR -> UINTEGER
-		BOOLEAN = UINTEGER -> BOOLEAN  # cmp $0
-		BOOLEAN = DOUBLE -> BOOLEAN    # cmp flottante avec $0
-		BOOLEAN = CHAR -> BOOLEAN      # cmp $0
-		DOUBLE = UINTEGER -> DOUBLE
-		DOUBLE = BOOLEAN -> DOUBLE
-		DOUBLE = CHAR -> DOUBLE
-		CHAR = UINTEGER -> CHAR
-		CHAR = BOOLEAN -> CHAR
-		CHAR = DOUBLE -> CHAR  # (#include <cmath> int y = (int)std::round(x);)
-
-
-Questions:
-
-*/
-
-/*
-
 TP à rendre avant l'examen écrit. Voir date limite du dépôt.
 
 Faire un petit texte qui précise les différences avec la version finale du prof.
@@ -1168,15 +1147,20 @@ Ex: les procédures avec des paramètres.
 Ex: les RECORDs (structures, types définis par l'utilisateur).
 
 À IMPLÉMENTER:
+- variables locales aux fonctions ?
+- fonctions > récursivité
+	- revoir les variables, au lieu de push pop, simplement push et ajouter une propriété à la struct Variable
+		unsigned long long stackDistance
+
+- scope (stocker distance par rapport au sommet de la pile | 8 * position dans le scope)
+
+- void Warning(std::string s);  // conversions, fonctions vides, blocks vides...
 - cast explicite 
 - write
-- fonctions
-- struct
-- scope (stocker distance par rapport au sommet de la pile | 8 * position dans le scope)
+- struct = record
 - stringconst (retirer les \n des FormatStrings)
-- restructurer tout !!! (retirer commentaires inutiles, commenter fonctions)
+- restructurer tout !!! (retirer commentaires inutiles, commenter fonctions d'analyse)
 - entiers signés
-
 */
 
 /*
@@ -1185,25 +1169,44 @@ struct Function {
 	std::string name;
 	TYPE returnType;
 	std::ordered_set?<Variable> args;
+	bool defined;
 };
 
-// FunctionDeclaration := "FUNCTION" Identifier "(" [ArgumentList {"," ArgumentList}] ")" ":" Type ? BlockStatement "."
-// ArgumentList := Identifier {"," Identifier} ":" Type
+*/
 
-// Statement +:= ReturnStatement
-// ReturnStatement := "RETURN" Expression
+// Exemples de programmes qui doivent compiler
+/*
+EXEMPLE DE PROGRAMME
+```1
+PROGRAM addition;
 
-// Factor +:= FunctionCall
-// FunctionCall := Identifier "(" [Expression {"," Expression}] ")"					// parenthèses = function identifier
+VAR res : UINTEGER;
 
+FUNCTION add(a, b : UINTEGER) : UINTEGER
+BEGIN
+	add := a + b
+END;
 
+PROCEDURE displayInt(a : UINTEGER)
+BEGIN
+	DISPLAY a;
+	DISPLAY '\n'
+END;
 
-PROTOTYPE: FORWARD?
+BEGIN
+	res := add(3, 4);
+	display(res)
+END.
+```
+```2
+PROGRAM Vide;
+BEGIN
+END.
+```
+*/
 
-
-
-
-
+// Fonction Chamsy
+/*
 
 void FunctionStatement(void){
     if(current != KEYWORD && strcmp(lexer->YYText(), "FUNCTION") != 0) {
@@ -1266,4 +1269,48 @@ void FunctionStatement(void){
     BlockStatement();
 }
 
+*/
+
+// Nouvelle grammaire
+/*
+// cf tokeniser.l
+//    Identifier
+//    Number
+//    Boolean
+//    Float
+//    Character
+// Type := "UINTEGER" | "BOOLEAN" | "DOUBLE" | "CHAR"
+// Constant := Number | Boolean | Float | Character
+!// FunctionCall := Identifier "(" [Expression {"," Expression}] ")"
+!// ProcedureCall := Identifier "(" [Expression {"," Expression}] ")"
+!// Factor := "!" Factor | "(" Expression ")" | Identifier | Constant | FunctionCall | ProcedureCall
+// MultiplicativeOperator := "*" | "/" | "%" | "&&"
+// Term := Factor {MultiplicativeOperator Factor}
+// AdditiveOperator := "+" | "-" | "||".
+// SimpleExpression := Term {AdditiveOperator Term}
+// RelationalOperator := "==" | "!=" | "<" | ">" | "<=" | ">="  
+// Expression := SimpleExpression [RelationalOperator SimpleExpression]
+//
+// BlockStatement := "BEGIN" Statement {";" Statement} "END"
+// AssignmentStatement := Identifier ":=" Expression
+// IfStatement := "IF" Expression "THEN" Statement ["ELSE" Statement]
+// WhileStatement := "WHILE" Expression "DO" Statement
+// ForStatement := "FOR" AssignmentStatement ("TO" | "DOWNTO") Expression "DO" Statement
+// DisplayStatement := "DISPLAY" Expression
+// CaseLabelList := Constant {"," Constant}
+// CaseElement := CaseLabelList ":" Statement
+// CaseStatement := "CASE" Expression "OF" CaseElement {";" CaseElement} [";" "ELSE" Statement] "END"
+!// ReturnStatement := Identifier? Expression
+!// Statement := AssignmentStatement | IfStatement | WhileStatement | ForStatement | BlockStatement | DisplayStatement | CaseStatement | ReturnStatement
+//
+!// VarDeclaration := Identifier {"," Identifier} ":" Type
+!// VarSection := "VAR" VarDeclaration {";" VarDeclaration}
+!// ArgumentList := Identifier {"," Identifier} ":" Type
+!// FunctionDeclaration := "FUNCTION" Identifier "(" [ArgumentList {";" ArgumentList}] ")" ":" Type
+!// FunctionDefinition := "FUNCTION" Identifier "(" [ArgumentList {";" ArgumentList}] ")" ":" Type ? BlockStatement
+!// FunctionSection :=  FunctionDeclaration | FunctionDefinition {";" FunctionDeclaration | ";" FunctionDefinition}
+!// ProcedureDeclaration := "PROCEDURE" Identifier "(" [ArgumentList {";" ArgumentList}] ")" ":" Type "."
+!// ProcedureDefinition := "PROCEDURE" Identifier "(" [ArgumentList {";" ArgumentList}] ")" ":" Type ? BlockStatement "."
+!// ProcedureSection := ProcedureDeclaration | ProcedureDefinition {";" ProcedureDeclaration | ";" ProcedureDefinition}
+!// Program := "PROGRAM" Identifier [";" VarSection] [";" FunctionSection] [";" ProcedureSection] ";" BlockStatement "."
 */

@@ -3,5 +3,5 @@ VAR
     a, b : DOUBLE.
 
 (* Partie instructions *)
-a := -10.0;
-IF a < 0 THEN DISPLAY a ELSE DISPLAY 0.
+a := 3 + 6.6;
+DISPLAY a.
