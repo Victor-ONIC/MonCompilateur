@@ -90,7 +90,7 @@ mulop	(\*|\/|%|\&\&)
 relop	(\<|\>|"=="|\<=|\>=|!=)
 
 	// keyword: IF, THEN, ELSE, WHILE, DO, FOR, TO, BEGIN, ou END
-keyword (IF|THEN|ELSE|WHILE|DO|FOR|TO|DOWNTO|BEGIN|END|DISPLAY|CASE|OF|TRUE|FALSE|VAR|UINTEGER|BOOLEAN|DOUBLE|CHAR)
+keyword (PROGRAM|FUNCTION|PROCEDURE|IF|THEN|ELSE|WHILE|DO|FOR|TO|DOWNTO|BEGIN|END|DISPLAY|CASE|OF|TRUE|FALSE|VAR|UINTEGER|BOOLEAN|DOUBLE|CHAR)
 
 	// unknown: toute suite de un ou plus caractères DIFFÉRENTS de
 	// ", A-Z, a-z, 0-9, ' ', \n, \r, \t, (, ), <, >, =, !, %, &, |, }, -, ;, ou .

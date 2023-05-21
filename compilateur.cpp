@@ -1,46 +1,11 @@
-
-/// GRAMMAIRE DU LANGAGE
-//
-// cf tokeniser.l
-//    Identifier
-//    Number
-//    Float
-//    Character
-// 
-// MultiplicativeOperator := "*" | "/" | "%" | "&&"
-// AdditiveOperator := "+" | "-" | "||"
-// RelationalOperator := "==" | "!=" | "<" | ">" | "<=" | ">="  
-//
-// Factor := Number | Identifier | Float | Character | "(" Expression ")" | "!" Factor | "TRUE" | "FALSE"
-// Term := Factor {MultiplicativeOperator Factor}
-// SimpleExpression := Term {AdditiveOperator Term}
-// Expression := SimpleExpression [RelationalOperator SimpleExpression]
-//
-// AssignmentStatement := Identifier ":=" Expression
-// IfStatement := "IF" Expression "THEN" Statement ["ELSE" Statement]
-// WhileStatement := "WHILE" Expression "DO" Statement
-// ForStatement := "FOR" AssignmentStatement "TO" Expression "DO" Statement
-// BlockStatement := "BEGIN" Statement {";" Statement} "END"
-// DisplayStatement := "DISPLAY" Expression
-// CaseLabelList := Constant {"," Constant}
-// CaseElement := CaseLabelList ":" Statement
-// CaseStatement := "CASE" Expression "OF" CaseElement {";" CaseElement} "END"
-// Statement := AssignmentStatement | IfStatement | WhileStatement | ForStatement | BlockStatement | DisplayStatement | CaseStatement
-//
-// StatementPart := Statement {";" Statement} "."
-// Type := "UINTEGER" | "BOOLEAN" | "DOUBLE" | "CHAR"
-// VarDeclaration := Identifier {"," Identifier} ":" Type
-// DeclarationPart := "VAR" VarDeclaration {";" VarDeclaration} "."
-// Program := [DeclarationPart] StatementPart
-//
-///
-
 #include <cstdlib>
 #include <iostream>
 #include <cstring>
 #include <string>
 #include <set>
 #include <vector>
+#include <map>
+#include <algorithm>
 #include <FlexLexer.h>
 #include "tokeniser.h"
 
@@ -59,21 +24,56 @@ std::string typeString[] = {
 	"UINTEGER", "BOOLEAN", "DOUBLE", "CHAR"
 };
 
-// Les variables sont stockées sous la forme d'une struct, afin d'avoir
-// un nombre variable d'attributs.
+
+
 struct Variable {
 	std::string name;
 	TYPE type;
 };
-// On doit surcharger l'opérateur < pour pouvoir faire une recherche
-// dans DeclaredVariables.
-// Pour comparer deux struct Variable on ne regarde que leur nom.
+
+std::set<Variable> DeclaredVariables;
+
 bool operator<(const Variable& left, const Variable& right) {
 	return left.name < right.name;
 }
+bool operator==(const Variable& left, const Variable& right) {
+	return left.name == right.name;
+}
 
-// Stocke les variables du programme.
-std::set<Variable> DeclaredVariables;
+bool IsVarDeclared(std::string name) {
+	return DeclaredVariables.find({name}) != DeclaredVariables.end();
+}
+
+
+
+struct Subroutine {
+	std::vector<Variable> arguments;
+	// std::set<Variable> local;
+	TYPE returnType;
+	bool defined;
+};
+
+std::map<std::string, Subroutine> DeclaredSubroutines;
+
+bool IsSubroutineDeclared(std::string name) {
+	return DeclaredSubroutines.find(name) != DeclaredSubroutines.end();
+}
+
+bool IsSubroutineDefined(std::string name) {
+	return IsSubroutineDeclared(name) && DeclaredSubroutines[name].defined;
+}
+
+bool IsArgument(std::string name, std::string functionName) {
+	if (!IsSubroutineDefined(functionName)) return false;
+	std::vector<Variable> v = DeclaredSubroutines[functionName].arguments;
+	Variable valeur = {name};
+	return std::find(v.begin(), v.end(), valeur) != v.end();
+}
+
+bool is_subroutine = false;
+std::string currentSubroutine = "";
+
+
 
 // Type du token actuellement sous la tête de lecture (id, keyword, ...).
 TOKEN current;
@@ -86,11 +86,6 @@ FlexLexer* lexer = new yyFlexLexer;
 unsigned long long TagNumber = 0;
 
 
-
-/// Retourne vrai si la variable a déjà été déclarée.
-bool IsDeclared(const char *id) {
-	return DeclaredVariables.find({id}) != DeclaredVariables.end();
-}
 
 /// Arrêt total du programme, laissant la compilation inachevée.
 void Error(std::string s) {
@@ -126,14 +121,23 @@ TYPE Identifier() {
 	}
 
 	std::string varName = lexer->YYText();
-	if (!IsDeclared(varName.c_str())) {
-		Error("(Identifier) Erreur: Variable non déclarée!");
+
+	if (is_subroutine) {
+		std::vector<Variable> v = DeclaredSubroutines[currentSubroutine].arguments;
+		for (int i = 0; i < v.size(); i++) {
+			if (v[i].name == varName) {
+				std::cout << "\tpush " << 16 + 8 * i << "(%rbp)" << std::endl;
+				current = (TOKEN)lexer->yylex();
+				return v[i].type;
+			}
+		}
 	}
 
+	if (!IsVarDeclared(varName)) {
+		Error("(Identifier) Erreur: Variable non déclarée!");
+	}
 	std::cout << "\tpush " << varName << std::endl;
-
-	current = (TOKEN)lexer->yylex();  // reconnaître l'ID
-	
+	current = (TOKEN)lexer->yylex();
 	return DeclaredVariables.find({varName})->type;
 }
 
@@ -197,11 +201,6 @@ TYPE Character() {
 	return CHAR;
 }
 
-TYPE String() {
-	Error("(String) Attention: Pas encore implémenté.");
-	return UINTEGER;
-}
-
 // Type := "UINTEGER" | "BOOLEAN" | "DOUBLE" | "CHAR"
 TYPE Type() {
 	if (current != KEYWORD) {
@@ -225,7 +224,7 @@ TYPE Type() {
 	return type;
 }
 
-// Constant := Number | Boolean | Float | Character | String
+// Constant := Number | Boolean | Float | Character
 TYPE Constant() {
 	TYPE returnType;
 
@@ -242,9 +241,6 @@ TYPE Constant() {
 		case CHARCONST:
 			returnType = Character();
 			break;
-		case STRINGCONST:
-			returnType = String();
-			break;
 		default:
 			Error("(Constant) Erreur: Constante inconnue!");
 	}
@@ -252,7 +248,43 @@ TYPE Constant() {
 	return returnType;
 }
 
-// Factor := "!" Factor | "(" Expression ")" | Identifier | Constant
+// FunctionCall := Identifier "(" [Expression {"," Expression}] ")"
+TYPE FunctionCall() {
+	if (current != ID) {
+		Error("(FunctionCall) Erreur: Identifiant attendu!");
+	}
+	std::string functionName = lexer->YYText();
+	current = (TOKEN)lexer->yylex();
+
+	if (current != LPARENT) {
+		Error("(FunctionCall) Erreur: Symbole `(` attendu!");
+	}
+	current = (TOKEN)lexer->yylex();
+
+	if (current != RPARENT) {
+		Expression();
+		while (current == COMMA) {
+			current = (TOKEN)lexer->yylex();
+			Expression();
+		}
+	}
+
+	if (current != RPARENT) {
+		Error("(FunctionCall) Erreur: Symbole `)` attendu!");
+	}
+	current = (TOKEN)lexer->yylex();
+
+	std::cout << "\tcall " << functionName << std::endl;
+	std::cout << "\taddq $" << 8 * DeclaredSubroutines[functionName].arguments.size() << ", %rsp" << std::endl;
+
+	return DeclaredSubroutines[functionName].returnType;
+}
+
+void ProcedureCall() {
+
+}
+
+// Factor := "!" Factor | "(" Expression ")" | Identifier | Constant | FunctionCall
 TYPE Factor() {
 	TYPE returnType;
 
@@ -286,7 +318,16 @@ TYPE Factor() {
 		current = (TOKEN)lexer->yylex();
 
 	} else if (current == ID) {
-		returnType = Identifier();
+		std::string id = lexer->YYText();
+		if (IsSubroutineDeclared(id)) {
+			if (DeclaredSubroutines[id].returnType == WTFT) {
+				Error("(Identifier) Erreur: Procédure n'a pas de valeur de retour!");
+			}
+			returnType = FunctionCall();
+			std::cout << "\tpush %rax" << std::endl;
+		} else {	
+			returnType = Identifier();
+		} 
 	} else {
 		returnType = Constant();
 	}
@@ -503,7 +544,7 @@ TYPE SimpleExpression(){
 					std::cout << "\tsubq $8, %rsp" << std::endl;
 					std::cout << "\tfstpl (%rsp)" << std::endl;  // store result                        ^
 				} else {
-					std::cout << "\taddq %rbx" << std::endl;  		 // %rbx + %rax => %rax
+					std::cout << "\taddq %rbx, %rax" << std::endl;   // %rbx + %rax => %rax
 					std::cout << "\tpush %rax\t# ADD" << std::endl;  // store result:    ^
 				}
 				break;
@@ -639,22 +680,13 @@ TYPE Expression() {
 
 // BlockStatement := "BEGIN" Statement {";" Statement} "END"
 void BlockStatement() {
-	unsigned long long tag = ++TagNumber;
-
 	ReadKeyword("BEGIN");
-
-	std::cout << "Begin" << tag << ":" << std::endl;
-
-	Statement();  // reconnaître Statement
-
+	Statement();
 	while (current == SEMICOLON) {
-		current = (TOKEN)lexer->yylex();  // reconnaître ";"
-		Statement();  // reconnaître Statement
+		current = (TOKEN)lexer->yylex();
+		Statement();
 	}
-
 	ReadKeyword("END");
-
-	std::cout << "End" << tag << ":" << std::endl;
 }
 
 // AssignmentStatement := Identifier ":=" Expression
@@ -662,23 +694,46 @@ void AssignmentStatement() {
 	if (current != ID) {
 		Error("(AssignmentStatement) Erreur: Identifiant attendu!");
 	}
-	if (!IsDeclared(lexer->YYText())) {
-		Error("(AssignmentStatement) Erreur: Variable `" + std::string(lexer->YYText()) + "` non déclarée!");
-	}
+	std::string id = lexer->YYText();
 
-	std::string variable = lexer->YYText();  // nom de la variable
-	TYPE variableType = DeclaredVariables.find({variable})->type;  // type de la variable
-	current = (TOKEN)lexer->yylex();  // reconnaître ID
+	TYPE type;
+	bool found = false;
+	std::string output;
+	if (is_subroutine) {
+		if (currentSubroutine == id && DeclaredSubroutines[currentSubroutine].returnType != WTFT) {
+			// Cas spécial: assignement de la valeur de retour d'une fonction (pas de procédures donc).
+			found = true;
+			output = "\tpop %rax";
+			type = DeclaredSubroutines[currentSubroutine].returnType;
+		} else {
+			// Paramètres.
+			std::vector<Variable> v = DeclaredSubroutines[currentSubroutine].arguments;
+			for (int i = 0; i < v.size(); i++) {
+				if (v[i].name == id) {
+					found = true;
+					output = "\tpop " + std::to_string(16 + 8 *i) + "(%rbp)";
+					type = DeclaredSubroutines[currentSubroutine].returnType;
+				}
+			}
+		}
+	}
+	if (!found) {
+		// Variables globales.
+		if (!IsVarDeclared(id)) {
+			Error("(AssignmentStatement) Erreur: Variable `" + id + "` non déclarée!");
+		}
+		type = DeclaredVariables.find({id})->type;
+		output = "\tpop " + id;
+	}
+	current = (TOKEN)lexer->yylex();
 
 	if (current != ASSIGN) {
 		Error("(AssignmentStatement) Erreur: Symbole `:=` attendu!");
 	}
+	current = (TOKEN)lexer->yylex();
 
-	current = (TOKEN)lexer->yylex();  // reconnaître ":="
-
-	TYPE exprType = Expression();  // reconnaître Expression
-
-	switch (variableType) {
+	TYPE exprType = Expression();
+	switch (type) {
 		case UINTEGER:
 		case BOOLEAN:
 		case CHAR:
@@ -690,13 +745,14 @@ void AssignmentStatement() {
 			break;
 		case DOUBLE:
 			if (IsIntegral(exprType)) {
+				// Convertir d'entier à flottant 64 bits.
 				std::cout << "\tfild (%rsp)" << std::endl;
 				std::cout << "\tfstpl (%rsp)" << std::endl;
 			}
 			break;
 	}
 
-	std::cout << "\tpop " << variable << "\t# Assign" << std::endl;
+	std::cout << output << std::endl;
 }
 
 // IfStatement := "IF" Expression "THEN" Statement ["ELSE" Statement]
@@ -903,6 +959,7 @@ TYPE CaseElement(unsigned long long endTagNumber) {
 
 	// Cette étiquette doit correspondre avec le jump juste au dessus.
 	std::cout << "Case" << tag + 1 << ":" << std::endl;
+	TagNumber++;
 
 	return labelType;
 }
@@ -968,47 +1025,24 @@ void Statement() {
 		} else if (strcmp("CASE", lexer->YYText()) == 0) {
 			CaseStatement();
 		} else {
-			Error("(Statement) Erreur: Mot clé inconnu!");
+			Error("(Statement) Erreur: Instruction inconnue!");
 		}
 	} else {
 		Error("(Statement) Erreur: Identifiant ou mot clé attendu!");
 	}
 }
 
-// StatementPart := Statement {";" Statement} "."
-void StatementPart() {
-	std::cout << "\t.text"           << std::endl;
-	std::cout << "\t.globl main"     << std::endl;
-	// std::cout << "\t.align 8"     << std::endl;
-	std::cout << "main:"             << std::endl;
-	std::cout << "\tmovq %rsp, %rbp" << std::endl;
-	std::cout << std::endl;
-
-	Statement();  // reconnaître Statement
-
-	while (current == SEMICOLON) {
-		current = (TOKEN)lexer->yylex();  // reconnaître ";"
-		Statement();  // reconnaître Statement
-	}
-
-	if (current != DOT) {
-		Error("(StatementPart) Erreur: `.` attendu!");
-	}
-
-	current = (TOKEN)lexer->yylex();  // reconnaître "."
-}
-
 // VarDeclaration := Identifier {"," Identifier} ":" Type
 void VarDeclaration() {
-	// Ensemble de noms des variables déclarées ici.
-	std::set<std::string> variables;
-
 	if (current != ID) {
 		Error("(VarDeclaration) Erreur: Identifiant attendu!");
 	}
 
+	// Ensemble de noms des variables déclarées ici.
+	std::set<std::string> variables;
+
 	// Vérification
-	if (IsDeclared(lexer->YYText())) {
+	if (IsVarDeclared(lexer->YYText())) {
 		Error("(VarDeclaration) Erreur: Variable `" + std::string(lexer->YYText()) + "` déjà déclarée!");
 	}
 	variables.insert(lexer->YYText());
@@ -1018,7 +1052,7 @@ void VarDeclaration() {
 		current = (TOKEN)lexer->yylex();  // reconnaître ","
 
 		// Vérification
-		if (IsDeclared(lexer->YYText())) {
+		if (IsVarDeclared(lexer->YYText())) {
 			Error("(VarDeclaration) Erreur: Variable `" + std::string(lexer->YYText()) + "` déjà déclarée!");
 		}
 		variables.insert(lexer->YYText());
@@ -1038,30 +1072,30 @@ void VarDeclaration() {
 	switch (varType) {
 		case UINTEGER:
 			// .quad.
-			for (std::string variable : variables) {
-				DeclaredVariables.insert({variable, UINTEGER});  // déclarer
-				std::cout << variable << ":\t.quad 0" << std::endl;  // créer
+			for (std::string variableName : variables) {
+				DeclaredVariables.insert({variableName, UINTEGER});  // déclarer
+				std::cout << variableName << ":\t.quad 0" << std::endl;  // créer
 			}
 			break;
 		case BOOLEAN:
 			// .byte OU .quad également, on n'est pas à ça près.
-			for (std::string variable : variables) {
-				DeclaredVariables.insert({variable, BOOLEAN});  // déclarer
-				std::cout << variable << ":\t.quad 0" << std::endl;  // créer
+			for (std::string variableName : variables) {
+				DeclaredVariables.insert({variableName, BOOLEAN});  // déclarer
+				std::cout << variableName << ":\t.quad 0" << std::endl;  // créer
 			}
 			break;
 		case DOUBLE:
 			// .double
-			for (std::string variable : variables) {
-				DeclaredVariables.insert({variable, DOUBLE});  // déclarer
-				std::cout << variable << ":\t.double 0.0" << std::endl;  // créer
+			for (std::string variableName : variables) {
+				DeclaredVariables.insert({variableName, DOUBLE});  // déclarer
+				std::cout << variableName << ":\t.double 0.0" << std::endl;  // créer
 			}
 			break;
 		case CHAR:
 			// .byte
-			for (std::string variable : variables) {
-				DeclaredVariables.insert({variable, CHAR});  // déclarer
-				std::cout << variable << ":\t.byte 0" << std::endl;  // créer
+			for (std::string variableName : variables) {
+				DeclaredVariables.insert({variableName, CHAR});  // déclarer
+				std::cout << variableName << ":\t.byte 0" << std::endl;  // créer
 			}
 			break;
 		default:
@@ -1069,40 +1103,162 @@ void VarDeclaration() {
 	}
 }
 
-// DeclarationPart := "VAR" VarDeclaration {";" VarDeclaration} "."
-void DeclarationPart() {
+// VarSection := "VAR" VarDeclaration {";" VarDeclaration}
+void VarSection() {
 	ReadKeyword("VAR");
-
-	VarDeclaration();  // reconnaître VarDeclaration
-
+	VarDeclaration();
 	while (current == SEMICOLON) {
-		current = (TOKEN)lexer->yylex();  // reconnaître ";"
-		VarDeclaration();  // reconnaître VarDeclaration
+		current = (TOKEN)lexer->yylex();
+		VarDeclaration();
 	}
-
-	if (current != DOT) {
-		Error("(DeclarationPart) Erreur: `.` attendu!");
-	}
-
-	current = (TOKEN)lexer->yylex();  // reconnaître "."
-
-	std::cout << std::endl;
 }
 
-// Program := [DeclarationPart] StatementPart
-void Program() {
+// ArgumentList := Identifier {"," Identifier} ":" Type
+void ArgumentList(std::string functionName, std::vector<Variable>& arguments) {
+	if (current != ID) {
+		Error("(ArgumentList) Erreur: Identifiant attendu!");
+	}
+
+	std::set<std::string> liste;
+
+	if (liste.find(lexer->YYText()) != liste.end()) {
+		Error("(ArgumentList) Erreur: Argument `" + std::string(lexer->YYText()) + "` déjà déclaré!");
+	}
+	liste.insert(lexer->YYText());
+	current = (TOKEN)lexer->yylex();
+
+	while(current == COMMA) {
+		current = (TOKEN)lexer->yylex();
+		if (liste.find(lexer->YYText()) != liste.end()) {
+			Error("(ArgumentList) Erreur: Argument `" + std::string(lexer->YYText()) + "` déjà déclaré!");
+		}
+		liste.insert(lexer->YYText());
+		current = (TOKEN)lexer->yylex();
+	}
+
+	if (current != COLON) {
+		Error("(ArgumentList) Erreur: Symbole `:` attendu!");
+	}
+	current = (TOKEN)lexer->yylex();
+
+	TYPE varType = Type();
+	if (varType == WTFT) {
+		Error("(ArgumentList) Erreur: Type inconnu!");
+	}
+	for (std::string variableName : liste) {
+		arguments.push_back({variableName, varType});
+	}
+}
+
+// Function := "FUNCTION" Identifier "(" [ArgumentList {";" ArgumentList}] ")" ":" Type [BlockStatement]
+void Function() {
+	ReadKeyword("FUNCTION");
+
+	if (current != ID) {
+		Error("(Function) Erreur: Identifiant attendu!");
+	}
+	std::string functionName = lexer->YYText();
+	current = (TOKEN)lexer->yylex();
+
+	if (current != LPARENT) {
+		Error("(Function) Erreur: Symbole `(` attendu!");
+	}
+	current = (TOKEN)lexer->yylex();
+
+	std::vector<Variable> arguments;
+	if (current == ID) {
+		ArgumentList(functionName, arguments);
+		while (current == SEMICOLON) {
+			current = (TOKEN)lexer->yylex();
+			ArgumentList(functionName, arguments);
+		}
+	}
+	std::reverse(arguments.begin(), arguments.end());
+
+	if (current != RPARENT) {
+		Error("(Function) Erreur: Symbole `)` attendu!");
+	}
+	current = (TOKEN)lexer->yylex();
+
+	if (current != COLON) {
+		Error("(Function) Erreur: Symbole `:` attendu!");
+	}
+	current = (TOKEN)lexer->yylex();
+
+	TYPE returnType = Type();
+	if (returnType == WTFT) {
+		Error("(Function) Erreur: Type de retour inconnu!");
+	}
+
+	if (IsSubroutineDeclared(functionName)) {
+		if (arguments != DeclaredSubroutines[functionName].arguments || returnType != DeclaredSubroutines[functionName].returnType) {
+			Error("(Function) Erreur: Déclaration de la fonction `" + functionName + "` incompatible avec une précédente déclaration!");
+		}
+	} else {
+		Subroutine S = {
+			arguments,
+			returnType,
+			false
+		};
+		DeclaredSubroutines[functionName] = S;
+	}
+
 	if (current == KEYWORD) {
-		// Partie déclaration optionnelle.
-		// Mais si pas de variable, alors pas d'instructions...
-		DeclarationPart();
+		if(IsSubroutineDefined(functionName)) {
+			Error("(Function) Erreur: Fonction `" + functionName + "` déjà définie!");
+		}
+
+		std::cout << functionName << ":" << std::endl;
+		std::cout << "\tpush %rbp" << std::endl;
+		std::cout << "\tmovq %rsp, %rbp" << std::endl;
+		// subq $varlocales, %rsp
+
+		is_subroutine = true;
+		currentSubroutine = functionName;
+		BlockStatement();
+		currentSubroutine = "";
+		is_subroutine = false;
+		DeclaredSubroutines[functionName].defined = true;
+
+		std::cout << "\tpop %rbp" << std::endl;
+		std::cout << "\tret" << std::endl;
 	}
-	StatementPart();  // partie instruction obligatoire
 }
 
-/// First version: Source code on standard input and assembly code on standard output.
-int main() {
-	// Header for gcc assembler / linker.
+// FunctionSection := Function {";" Function}
+void FunctionSection() {
+	Function();
+	while (current == SEMICOLON) {
+		current = (TOKEN)lexer->yylex();
+		Function();
+	}
+}
+
+// Procedure := "PROCEDURE" Identifier "(" [ArgumentList {";" ArgumentList}] ")" ";" [BlockStatement]
+void Procedure() {
+}
+
+// ProcedureSection := Procedure {";" Procedure}
+void ProcedureSection() {
+}
+
+// Program := "PROGRAM" Identifier ";" [VarSection "."] [FunctionSection "."] [ProcedureSection "."] BlockStatement "."
+void Program() {
 	std::cout << "# This code was produced by VICTOR's Vcompiler for Vascal. <3" << std::endl;
+
+	ReadKeyword("PROGRAM");
+
+	if (current != ID) {
+		Error("(Program) Erreur: Identifiant attendu!");
+	}
+	current = (TOKEN)lexer->yylex();
+
+	if (current != SEMICOLON) {
+		Error("(Program) Erreur: Symbole `;` attendu!");
+	}
+	current = (TOKEN)lexer->yylex();
+
+	// Header for gcc assembler / linker.
 	std::cout << std::endl;
 	std::cout << "\t.data" << std::endl;
 	std::cout << "FormatStringLLU:\t.string \"%llu\\n\"" << std::endl;
@@ -1111,29 +1267,72 @@ int main() {
 	std::cout << "TrueString:\t.string \"TRUE\\n\"" << std::endl;
 	std::cout << "FalseString:\t.string \"FALSE\\n\"" << std::endl;
 
-	// Let's proceed to the analysis and code production.
-	current = (TOKEN) lexer->yylex();  // déplacer la tête de lecture sur le premier token
-	Program();  // reconnaître le PROGRAMME entier.
+	if (current == KEYWORD && strcmp("VAR", lexer->YYText()) == 0) {
+		VarSection();
+		if (current != DOT) {
+			Error("(Program) Erreur: Symbole `.` attendu!");
+		}
+		current = (TOKEN)lexer->yylex();
+	}
 
-	// Trailer for the gcc assembler / linker.
 	std::cout << std::endl;
-	std::cout << "\tmovq $0, %rax" << std::endl;  // valeur de retour de main égale à 0.
-	std::cout << "\tmovq %rbp, %rsp\t# Restore the position of the stack's top" << std::endl;
-	std::cout << "\tret\t# Return from main function" << std::endl;
+	std::cout << "\t.text" << std::endl;
 
-	if (current != FEOF) {
-		Error("(main) Erreur: Fin du programme attendue!!!");  // unexpected characters at the end of program
+	if (current == KEYWORD && strcmp("FUNCTION", lexer->YYText()) == 0) {
+		FunctionSection();
+		if (current != DOT) {
+			Error("(Program) Erreur: Symbole `.` attendu!");
+		}
+		current = (TOKEN)lexer->yylex();
+	}
+
+	if (current == KEYWORD && strcmp("PROCEDURE", lexer->YYText()) == 0) {
+		ProcedureSection();
+		if (current != DOT) {
+			Error("(Program) Erreur: Symbole `.` attendu!");
+		}
+		current = (TOKEN)lexer->yylex();
 	}
 	
+	std::cout << std::endl;
+	std::cout << "\t.text"           << std::endl;
+	std::cout << "\t.globl main"     << std::endl;
+	// std::cout << "\t.align 8"     << std::endl;
+	std::cout << "main:"             << std::endl;
+	std::cout << "\tmovq %rsp, %rbp" << std::endl;
+
+	std::cout << std::endl;
+	BlockStatement();
+	std::cout << std::endl;
+
+	if (current != DOT) {
+		Error("(Program) Erreur: Symbole `.` attendu!");
+	}
+	current = (TOKEN)lexer->yylex();
+
+	// Trailer for the gcc assembler / linker.
+	std::cout << "\tmovq $0, %rax" << std::endl;  // valeur de retour de main égale à 0.
+	std::cout << "\tmovq %rbp, %rsp" << std::endl;
+	std::cout << "\tret" << std::endl;
+}
+
+/// First version: Source code on standard input and assembly code on standard output.
+int main() {
+	current = (TOKEN) lexer->yylex();  // déplacer la tête de lecture sur le premier token
+	Program();
+	if (current != FEOF) {
+		Error("(main) Erreur: Fin du programme attendue!");
+	}
 	return 0;
 }
 
-// Consignes + À IMPLÉMENTER
+// Consignes
 /*
 TP à rendre avant l'examen écrit. Voir date limite du dépôt.
 
 Faire un petit texte qui précise les différences avec la version finale du prof.
 Ce qui est commun avec la version du prof (ex. à partir du TP1, puis après c'est moi).
+Puis lister ce qu'on a rajouté.
 Lister, résumer ce qu'on a fait globalement. Pas trop de détails.
 Attirer l'attention sur ce qu'on a fait de différent, de mieux, de particulier.
 
@@ -1145,130 +1344,24 @@ Propre
 Avoir fait quelque chose qui n'a pas été enseigné. Aller au delà du cours. Attaquer des problèmes non abordés. Qui apporte quelque chose.
 Ex: les procédures avec des paramètres.
 Ex: les RECORDs (structures, types définis par l'utilisateur).
+*/
 
-À IMPLÉMENTER:
+// À IMPLÉMENTER
+/*
+-! DeclaredVariables as a map
+- statements appels de fonctions
+- procédures
 - variables locales aux fonctions ?
 - fonctions > récursivité
-	- revoir les variables, au lieu de push pop, simplement push et ajouter une propriété à la struct Variable
-		unsigned long long stackDistance
-
-- scope (stocker distance par rapport au sommet de la pile | 8 * position dans le scope)
 
 - void Warning(std::string s);  // conversions, fonctions vides, blocks vides...
 - cast explicite 
+- REPEAT
 - write
 - struct = record
 - stringconst (retirer les \n des FormatStrings)
 - restructurer tout !!! (retirer commentaires inutiles, commenter fonctions d'analyse)
 - entiers signés
-*/
-
-/*
-
-struct Function {
-	std::string name;
-	TYPE returnType;
-	std::ordered_set?<Variable> args;
-	bool defined;
-};
-
-*/
-
-// Exemples de programmes qui doivent compiler
-/*
-EXEMPLE DE PROGRAMME
-```1
-PROGRAM addition;
-
-VAR res : UINTEGER;
-
-FUNCTION add(a, b : UINTEGER) : UINTEGER
-BEGIN
-	add := a + b
-END;
-
-PROCEDURE displayInt(a : UINTEGER)
-BEGIN
-	DISPLAY a;
-	DISPLAY '\n'
-END;
-
-BEGIN
-	res := add(3, 4);
-	display(res)
-END.
-```
-```2
-PROGRAM Vide;
-BEGIN
-END.
-```
-*/
-
-// Fonction Chamsy
-/*
-
-void FunctionStatement(void){
-    if(current != KEYWORD && strcmp(lexer->YYText(), "FUNCTION") != 0) {
-        Error("FUNCTION keyword attendu");
-    }
-    current = (TOKEN)lexer->yylex();
-    if(current != ID){
-        Error("Identificateur attendu");
-    }
-    string function_identifier = lexer->YYText();
-
-    if(DeclaredFunctions.find(function_identifier) != DeclaredFunctions.end()){
-        Error("Fonction déjà déclarée");
-    }
-    current = (TOKEN)lexer->yylex();
-
-    Function function;
-
-    if(current != LPARENT){
-        Error("Caractère '(' attendu");
-    }
-
-    current = (TOKEN)lexer->yylex();
-
-    map<string, enum TYPES> arguments = map<string, enum TYPES>();
-
-	do {
-        current = (TOKEN)lexer->yylex(); ???
-        if(current != ID){
-            Error("Identificateur attendu");
-        }
-        string argument_identifier = lexer->YYText();
-        current = (TOKEN)lexer->yylex();
-        if(current != COLON){
-            Error("Caractère ':' attendu");
-        }
-        TYPES argument_type = Type();
-        arguments[argument_identifier] = argument_type;
-        current = (TOKEN)lexer->yylex();
-    } while (current == COMMA);
-
-    function.arguments = arguments;
-
-    if(current != RPARENT){
-        Error("Caractère ')' attendu");
-    }
-
-    current = (TOKEN)lexer->yylex();
-
-    if(current != COLON){
-        Error("Caractère ':' attendu");
-    }
-
-    current = (TOKEN)lexer->yylex();
-
-    function.return_type = Type();
-
-    DeclaredFunctions[function_identifier] = function;
-
-    BlockStatement();
-}
-
 */
 
 // Nouvelle grammaire
@@ -1281,9 +1374,9 @@ void FunctionStatement(void){
 //    Character
 // Type := "UINTEGER" | "BOOLEAN" | "DOUBLE" | "CHAR"
 // Constant := Number | Boolean | Float | Character
-!// FunctionCall := Identifier "(" [Expression {"," Expression}] ")"
+// FunctionCall := Identifier "(" [Expression {"," Expression}] ")"
 !// ProcedureCall := Identifier "(" [Expression {"," Expression}] ")"
-!// Factor := "!" Factor | "(" Expression ")" | Identifier | Constant | FunctionCall | ProcedureCall
+// Factor := "!" Factor | "(" Expression ")" | Identifier | Constant | FunctionCall
 // MultiplicativeOperator := "*" | "/" | "%" | "&&"
 // Term := Factor {MultiplicativeOperator Factor}
 // AdditiveOperator := "+" | "-" | "||".
@@ -1300,17 +1393,44 @@ void FunctionStatement(void){
 // CaseLabelList := Constant {"," Constant}
 // CaseElement := CaseLabelList ":" Statement
 // CaseStatement := "CASE" Expression "OF" CaseElement {";" CaseElement} [";" "ELSE" Statement] "END"
-!// ReturnStatement := Identifier? Expression
-!// Statement := AssignmentStatement | IfStatement | WhileStatement | ForStatement | BlockStatement | DisplayStatement | CaseStatement | ReturnStatement
+!// Statement := AssignmentStatement | IfStatement | WhileStatement | ForStatement | BlockStatement | DisplayStatement | CaseStatement | FunctionCall | ProcedureCall
 //
-!// VarDeclaration := Identifier {"," Identifier} ":" Type
-!// VarSection := "VAR" VarDeclaration {";" VarDeclaration}
-!// ArgumentList := Identifier {"," Identifier} ":" Type
-!// FunctionDeclaration := "FUNCTION" Identifier "(" [ArgumentList {";" ArgumentList}] ")" ":" Type
-!// FunctionDefinition := "FUNCTION" Identifier "(" [ArgumentList {";" ArgumentList}] ")" ":" Type ? BlockStatement
-!// FunctionSection :=  FunctionDeclaration | FunctionDefinition {";" FunctionDeclaration | ";" FunctionDefinition}
-!// ProcedureDeclaration := "PROCEDURE" Identifier "(" [ArgumentList {";" ArgumentList}] ")" ":" Type "."
-!// ProcedureDefinition := "PROCEDURE" Identifier "(" [ArgumentList {";" ArgumentList}] ")" ":" Type ? BlockStatement "."
-!// ProcedureSection := ProcedureDeclaration | ProcedureDefinition {";" ProcedureDeclaration | ";" ProcedureDefinition}
-!// Program := "PROGRAM" Identifier [";" VarSection] [";" FunctionSection] [";" ProcedureSection] ";" BlockStatement "."
+// VarDeclaration := Identifier {"," Identifier} ":" Type
+// VarSection := "VAR" VarDeclaration {";" VarDeclaration}
+// ArgumentList := Identifier {"," Identifier} ":" Type
+// Function := "FUNCTION" Identifier "(" [ArgumentList {";" ArgumentList}] ")" ":" Type [BlockStatement]
+// FunctionSection := Function {";" Function}
+!// Procedure := "PROCEDURE" Identifier "(" [ArgumentList {";" ArgumentList}] ")" [BlockStatement]
+!// ProcedureSection := Procedure {";" Procedure}
+// Program := "PROGRAM" Identifier ";" [VarSection "."] [FunctionSection "."] [ProcedureSection "."] BlockStatement "."
+*/
+
+/*
+sum:
+    pushq %rbp
+    movq %rsp, %rbp
+    push 24(%rbp)
+    push 16(%rbp)
+    pop %rbx
+    pop %rax
+    addq    %rbx, %rax    # ADD
+    push %rax
+    pop %rax
+    popq %rbp
+    ret
+main:
+    movq %rsp, %rbp
+    push $1
+    push $2
+    call sum
+    add $16, %rsp
+    push %rax
+    movq (%rsp), %rsi
+    movq $format_string_int, %rdi
+    movl    $0, %eax
+    call    printf@PLT
+    addq    $8, %rsp
+    movq %rbp, %rsp        # Restore the position of the stack's top
+    mov $0, %eax
+    ret
 */
