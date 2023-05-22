@@ -114,31 +114,43 @@ bool IsIntegral(TYPE type) {
 
 TYPE Expression();  // Called by Term and calls Term
 void Statement();  // Cross references between statement parts
+TYPE FunctionCall(std::string);  // Called by Identifier
 
 TYPE Identifier() {
 	if (current != ID) {
 		Error("(Identifier) Erreur: Identifiant attendu!");
 	}
+	std::string id = lexer->YYText();
+	current = (TOKEN)lexer->yylex();
 
-	std::string varName = lexer->YYText();
+	// Appel de routine dans une expression.
+	if (current == LPARENT) {
+		if (!IsSubroutineDeclared(id)) {
+			Error("(Identifier) Erreur: Routine non définie!");
+		}
+		if (DeclaredSubroutines[id].returnType == WTFT) {
+			Error("(Identifier) Erreur: Procédure n'a pas de valeur de retour!");
+		}
+		TYPE returnType = FunctionCall(id);
+		std::cout << "\tpush %rax" << std::endl;
+		return returnType;
+	}
 
 	if (is_subroutine) {
 		std::vector<Variable> v = DeclaredSubroutines[currentSubroutine].arguments;
 		for (int i = 0; i < v.size(); i++) {
-			if (v[i].name == varName) {
+			if (v[i].name == id) {
 				std::cout << "\tpush " << 16 + 8 * i << "(%rbp)" << std::endl;
-				current = (TOKEN)lexer->yylex();
 				return v[i].type;
 			}
 		}
 	}
 
-	if (!IsVarDeclared(varName)) {
+	if (!IsVarDeclared(id)) {
 		Error("(Identifier) Erreur: Variable non déclarée!");
 	}
-	std::cout << "\tpush " << varName << std::endl;
-	current = (TOKEN)lexer->yylex();
-	return DeclaredVariables.find({varName})->type;
+	std::cout << "\tpush " << id << std::endl;
+	return DeclaredVariables.find({id})->type;
 }
 
 TYPE Number() {
@@ -249,13 +261,7 @@ TYPE Constant() {
 }
 
 // FunctionCall := Identifier "(" [Expression {"," Expression}] ")"
-TYPE FunctionCall() {
-	if (current != ID) {
-		Error("(FunctionCall) Erreur: Identifiant attendu!");
-	}
-	std::string functionName = lexer->YYText();
-	current = (TOKEN)lexer->yylex();
-
+TYPE FunctionCall(std::string functionName) {
 	if (current != LPARENT) {
 		Error("(FunctionCall) Erreur: Symbole `(` attendu!");
 	}
@@ -280,11 +286,30 @@ TYPE FunctionCall() {
 	return DeclaredSubroutines[functionName].returnType;
 }
 
-void ProcedureCall() {
+void ProcedureCall(std::string procedureName) {
+	if (current != LPARENT) {
+		Error("(ProcedureCall) Erreur: Symbole `(` attendu!");
+	}
+	current = (TOKEN)lexer->yylex();
 
+	if (current != RPARENT) {
+		Expression();
+		while (current == COMMA) {
+			current = (TOKEN)lexer->yylex();
+			Expression();
+		}
+	}
+
+	if (current != RPARENT) {
+		Error("(ProcedureCall) Erreur: Symbole `)` attendu!");
+	}
+	current = (TOKEN)lexer->yylex();
+
+	std::cout << "\tcall " << procedureName << std::endl;
+	std::cout << "\taddq $" << 8 * DeclaredSubroutines[procedureName].arguments.size() << ", %rsp" << std::endl;
 }
 
-// Factor := "!" Factor | "(" Expression ")" | Identifier | Constant | FunctionCall
+// Factor := "!" Factor | "(" Expression ")" | Identifier | Constant
 TYPE Factor() {
 	TYPE returnType;
 
@@ -318,16 +343,7 @@ TYPE Factor() {
 		current = (TOKEN)lexer->yylex();
 
 	} else if (current == ID) {
-		std::string id = lexer->YYText();
-		if (IsSubroutineDeclared(id)) {
-			if (DeclaredSubroutines[id].returnType == WTFT) {
-				Error("(Identifier) Erreur: Procédure n'a pas de valeur de retour!");
-			}
-			returnType = FunctionCall();
-			std::cout << "\tpush %rax" << std::endl;
-		} else {	
-			returnType = Identifier();
-		} 
+		returnType = Identifier();
 	} else {
 		returnType = Constant();
 	}
@@ -376,7 +392,7 @@ TYPE Term() {
 				std::cout << "\tfildl (%rsp)" << std::endl;
 				std::cout << "\taddq $8, %rsp" << std::endl;
 			} else {
-				std::cout << "\tpop %rax" << std::endl;
+				std::cout << "\tpop %rbx" << std::endl;
 			}
 		}
 
@@ -389,7 +405,7 @@ TYPE Term() {
 				std::cout << "\tfildl (%rsp)" << std::endl;
 				std::cout << "\taddq $8, %rsp" << std::endl;
 			} else {
-				std::cout << "\tpop %rbx" << std::endl;
+				std::cout << "\tpop %rax" << std::endl;
 			}
 		}
 
@@ -414,27 +430,27 @@ TYPE Term() {
 				std::cout << "Suite" << tag << ":" 				<< std::endl;
 
 				std::cout << "\tandq %rbx, %rax" << std::endl;  // %rax and %rbx => %rax
-				std::cout << "\tpush %rax\t# AND" << std::endl;  // store result      ^
+				std::cout << "\tpush %rax" << std::endl;
 				break;
 			case MUL:
 				if (FPU) {
-					std::cout << "\tfmulp %st(0), %st(1)\t# MUL" << std::endl;  // %st(0) * %st(1) => %st(1) puis pop
+					std::cout << "\tfmulp %st(0), %st(1)" << std::endl;  // %st(0) * %st(1) => %st(1) puis pop
 					std::cout << "\tsubq $8, %rsp" << std::endl;
-					std::cout << "\tfstpl (%rsp)" << std::endl;  // store result                        ^
+					std::cout << "\tfstpl (%rsp)" << std::endl;
 				} else {
 					std::cout << "\tmulq %rbx" << std::endl;  // %rbx * %rax => %rdx:%rax
-					std::cout << "\tpush %rax\t# MUL" << std::endl;  // store result:  ^
+					std::cout << "\tpush %rax" << std::endl;
 				}
 				break;
 			case DIV:
 				if (FPU) {
-					std::cout << "\tfdivp %st(0), %st(1)\t# DIV" << std::endl;  // %st(0) / %st(1) => %st(1) puis pop
+					std::cout << "\tfdivp %st(0), %st(1)" << std::endl;  // %st(0) / %st(1) => %st(1) puis pop
 					std::cout << "\tsubq $8, %rsp" << std::endl;
-					std::cout << "\tfstpl (%rsp)" << std::endl;  // store result                        ^
+					std::cout << "\tfstpl (%rsp)" << std::endl;
 				} else {
 					std::cout << "\tmovq $0, %rdx" << std::endl;  // Partie haute du numérateur
 					std::cout << "\tdiv %rbx" << std::endl;  // %rdx:%rax / %rbx => q:%rax r:%rdx
-					std::cout << "\tpush %rax\t# DIV" << std::endl;  // store result:   ^
+					std::cout << "\tpush %rax" << std::endl;
 				}
 				break;
 			case MOD:
@@ -443,7 +459,7 @@ TYPE Term() {
 				}
 				std::cout << "\tmovq $0, %rdx" << std::endl;  // Partie haute du numérateur
 				std::cout << "\tdiv %rbx" << std::endl;  // %rdx:%rax / %rbx => q:%rax r:%rdx
-				std::cout << "\tpush %rdx\t# MOD" << std::endl;  // store result:          ^
+				std::cout << "\tpush %rdx" << std::endl;
 				break;
 			default:
 				Error("(Term) Erreur: Opérateur multiplicatif inconnu!");
@@ -498,7 +514,7 @@ TYPE SimpleExpression(){
 				std::cout << "\tfildl (%rsp)" << std::endl;
 				std::cout << "\taddq $8, %rsp" << std::endl;
 			} else {
-				std::cout << "\tpop %rax" << std::endl;
+				std::cout << "\tpop %rbx" << std::endl;
 			}
 		}
 
@@ -511,7 +527,7 @@ TYPE SimpleExpression(){
 				std::cout << "\tfildl (%rsp)" << std::endl;
 				std::cout << "\taddq $8, %rsp" << std::endl;
 			} else {
-				std::cout << "\tpop %rbx" << std::endl;
+				std::cout << "\tpop %rax" << std::endl;
 			}
 		}
 
@@ -536,26 +552,26 @@ TYPE SimpleExpression(){
 				std::cout << "Suite" << tag << ":" 				<< std::endl;
 
 				std::cout << "\torq %rbx, %rax" << std::endl;  // %rax or %rbx => %rax
-				std::cout << "\tpush %rax\t# OR" << std::endl;  // store result     ^
+				std::cout << "\tpush %rax" << std::endl;
 				break;
 			case ADD:
 				if (FPU) {
-					std::cout << "\tfaddp %st(0), %st(1)\t# ADD" << std::endl;  // %st(0) + %st(1) => %st(1) puis pop
+					std::cout << "\tfaddp %st(0), %st(1)" << std::endl;  // %st(0) + %st(1) => %st(1) puis pop
 					std::cout << "\tsubq $8, %rsp" << std::endl;
-					std::cout << "\tfstpl (%rsp)" << std::endl;  // store result                        ^
+					std::cout << "\tfstpl (%rsp)" << std::endl;
 				} else {
 					std::cout << "\taddq %rbx, %rax" << std::endl;   // %rbx + %rax => %rax
-					std::cout << "\tpush %rax\t# ADD" << std::endl;  // store result:    ^
+					std::cout << "\tpush %rax" << std::endl;
 				}
 				break;
 			case SUB:
 				if (FPU) {
-					std::cout << "\tfsubp %st(0), %st(1)\t# DIV" << std::endl;  // %st(0) - %st(1) => %st(1) puis pop
+					std::cout << "\tfsubp %st(0), %st(1)" << std::endl;  // %st(0) - %st(1) => %st(1) puis pop
 					std::cout << "\tsubq $8, %rsp" << std::endl;
-					std::cout << "\tfstpl (%rsp)" << std::endl;  // store result                        ^
+					std::cout << "\tfstpl (%rsp)" << std::endl;
 				} else {
 					std::cout << "\tsub %rbx, %rax" << std::endl;    // %rax - %rbx => %rax
-					std::cout << "\tpush %rax\t# DIV" << std::endl;  // store result:    ^
+					std::cout << "\tpush %rax" << std::endl;
 				}
 				break;
 			default:
@@ -695,6 +711,20 @@ void AssignmentStatement() {
 		Error("(AssignmentStatement) Erreur: Identifiant attendu!");
 	}
 	std::string id = lexer->YYText();
+	current = (TOKEN)lexer->yylex();
+
+	// Appel de routine comme instruction.
+	if (current == LPARENT) {
+		if (!IsSubroutineDeclared(id)) {
+			Error("(AssignmentStatement) Erreur: Routine non déclarée!");
+		}
+		if (DeclaredSubroutines[id].returnType == WTFT) {
+			ProcedureCall(id);
+		} else {
+			FunctionCall(id);
+		}
+		return;
+	}
 
 	TYPE type;
 	bool found = false;
@@ -725,7 +755,6 @@ void AssignmentStatement() {
 		type = DeclaredVariables.find({id})->type;
 		output = "\tpop " + id;
 	}
-	current = (TOKEN)lexer->yylex();
 
 	if (current != ASSIGN) {
 		Error("(AssignmentStatement) Erreur: Symbole `:=` attendu!");
@@ -1227,19 +1256,91 @@ void Function() {
 
 // FunctionSection := Function {";" Function}
 void FunctionSection() {
+	std::cout << std::endl;
+	std::cout << "\t.text" << std::endl;
 	Function();
 	while (current == SEMICOLON) {
 		current = (TOKEN)lexer->yylex();
+		std::cout << std::endl;
 		Function();
 	}
 }
 
 // Procedure := "PROCEDURE" Identifier "(" [ArgumentList {";" ArgumentList}] ")" ";" [BlockStatement]
 void Procedure() {
+	ReadKeyword("PROCEDURE");
+
+	if (current != ID) {
+		Error("(Procedure) Erreur: Identifiant attendu!");
+	}
+	std::string procedureName = lexer->YYText();
+	current = (TOKEN)lexer->yylex();
+
+	if (current != LPARENT) {
+		Error("(Procedure) Erreur: Symbole `(` attendu!");
+	}
+	current = (TOKEN)lexer->yylex();
+
+	std::vector<Variable> arguments;
+	if (current == ID) {
+		ArgumentList(procedureName, arguments);
+		while (current == SEMICOLON) {
+			current = (TOKEN)lexer->yylex();
+			ArgumentList(procedureName, arguments);
+		}
+	}
+	std::reverse(arguments.begin(), arguments.end());
+
+	if (current != RPARENT) {
+		Error("(Procedure) Erreur: Symbole `)` attendu!");
+	}
+	current = (TOKEN)lexer->yylex();
+
+	if (IsSubroutineDeclared(procedureName)) {
+		if (arguments != DeclaredSubroutines[procedureName].arguments) {
+			Error("(Procedure) Erreur: Déclaration de la procédure `" + procedureName + "` incompatible avec une précédente déclaration!");
+		}
+	} else {
+		Subroutine S = {
+			arguments,
+			WTFT,
+			false
+		};
+		DeclaredSubroutines[procedureName] = S;
+	}
+
+	if (current == KEYWORD) {
+		if(IsSubroutineDefined(procedureName)) {
+			Error("(Procedure) Erreur: Procédure `" + procedureName + "` déjà définie!");
+		}
+
+		std::cout << procedureName << ":" << std::endl;
+		std::cout << "\tpush %rbp" << std::endl;
+		std::cout << "\tmovq %rsp, %rbp" << std::endl;
+		// subq $varlocales, %rsp
+
+		is_subroutine = true;
+		currentSubroutine = procedureName;
+		BlockStatement();
+		currentSubroutine = "";
+		is_subroutine = false;
+		DeclaredSubroutines[procedureName].defined = true;
+
+		std::cout << "\tpop %rbp" << std::endl;
+		std::cout << "\tret" << std::endl;
+	}
 }
 
 // ProcedureSection := Procedure {";" Procedure}
 void ProcedureSection() {
+	std::cout << std::endl;
+	std::cout << "\t.text" << std::endl;
+	Procedure();
+	while (current == SEMICOLON) {
+		current = (TOKEN)lexer->yylex();
+		std::cout << std::endl;
+		Procedure();
+	}
 }
 
 // Program := "PROGRAM" Identifier ";" [VarSection "."] [FunctionSection "."] [ProcedureSection "."] BlockStatement "."
@@ -1274,9 +1375,6 @@ void Program() {
 		}
 		current = (TOKEN)lexer->yylex();
 	}
-
-	std::cout << std::endl;
-	std::cout << "\t.text" << std::endl;
 
 	if (current == KEYWORD && strcmp("FUNCTION", lexer->YYText()) == 0) {
 		FunctionSection();
@@ -1348,19 +1446,21 @@ Ex: les RECORDs (structures, types définis par l'utilisateur).
 
 // À IMPLÉMENTER
 /*
--! DeclaredVariables as a map
-- statements appels de fonctions
-- procédures
+-? DeclaredVariables as a map
 - variables locales aux fonctions ?
-- fonctions > récursivité
 
 - void Warning(std::string s);  // conversions, fonctions vides, blocks vides...
+	- conversions implicites
+	- fonctions vides
+	- pas de valeur de retour
+	- blocks vides
+	- case vide
 - cast explicite 
 - REPEAT
 - write
 - struct = record
+- restructurer tout !!! (retirer commentaires inutiles, commenter les fonctions d'analyse elles-mêmes)
 - stringconst (retirer les \n des FormatStrings)
-- restructurer tout !!! (retirer commentaires inutiles, commenter fonctions d'analyse)
 - entiers signés
 */
 
@@ -1375,8 +1475,8 @@ Ex: les RECORDs (structures, types définis par l'utilisateur).
 // Type := "UINTEGER" | "BOOLEAN" | "DOUBLE" | "CHAR"
 // Constant := Number | Boolean | Float | Character
 // FunctionCall := Identifier "(" [Expression {"," Expression}] ")"
-!// ProcedureCall := Identifier "(" [Expression {"," Expression}] ")"
-// Factor := "!" Factor | "(" Expression ")" | Identifier | Constant | FunctionCall
+// ProcedureCall := Identifier "(" [Expression {"," Expression}] ")"
+// Factor := "!" Factor | "(" Expression ")" | Identifier | Constant
 // MultiplicativeOperator := "*" | "/" | "%" | "&&"
 // Term := Factor {MultiplicativeOperator Factor}
 // AdditiveOperator := "+" | "-" | "||".
@@ -1393,44 +1493,23 @@ Ex: les RECORDs (structures, types définis par l'utilisateur).
 // CaseLabelList := Constant {"," Constant}
 // CaseElement := CaseLabelList ":" Statement
 // CaseStatement := "CASE" Expression "OF" CaseElement {";" CaseElement} [";" "ELSE" Statement] "END"
-!// Statement := AssignmentStatement | IfStatement | WhileStatement | ForStatement | BlockStatement | DisplayStatement | CaseStatement | FunctionCall | ProcedureCall
+// Statement := AssignmentStatement | IfStatement | WhileStatement | ForStatement | BlockStatement | DisplayStatement | CaseStatement
 //
 // VarDeclaration := Identifier {"," Identifier} ":" Type
 // VarSection := "VAR" VarDeclaration {";" VarDeclaration}
 // ArgumentList := Identifier {"," Identifier} ":" Type
 // Function := "FUNCTION" Identifier "(" [ArgumentList {";" ArgumentList}] ")" ":" Type [BlockStatement]
 // FunctionSection := Function {";" Function}
-!// Procedure := "PROCEDURE" Identifier "(" [ArgumentList {";" ArgumentList}] ")" [BlockStatement]
-!// ProcedureSection := Procedure {";" Procedure}
+// Procedure := "PROCEDURE" Identifier "(" [ArgumentList {";" ArgumentList}] ")" [BlockStatement]
+// ProcedureSection := Procedure {";" Procedure}
 // Program := "PROGRAM" Identifier ";" [VarSection "."] [FunctionSection "."] [ProcedureSection "."] BlockStatement "."
 */
 
 /*
-sum:
-    pushq %rbp
-    movq %rsp, %rbp
-    push 24(%rbp)
-    push 16(%rbp)
-    pop %rbx
-    pop %rax
-    addq    %rbx, %rax    # ADD
-    push %rax
-    pop %rax
-    popq %rbp
-    ret
-main:
-    movq %rsp, %rbp
-    push $1
-    push $2
-    call sum
-    add $16, %rsp
-    push %rax
-    movq (%rsp), %rsi
-    movq $format_string_int, %rdi
-    movl    $0, %eax
-    call    printf@PLT
-    addq    $8, %rsp
-    movq %rbp, %rsp        # Restore the position of the stack's top
-    mov $0, %eax
-    ret
+Concaténer des strings:
+1. strlen sur les deux -> taille totale après concaténation
+2. rdi -> malloc cette taille + 1 -> rax
+3. strcat rsi rdi - rsi première string & rdi @ malloc
+4. strcat rsi rdi - rsi deuxième string & rdi @ malloc
+Variables de type STRING stockées dans .quad.
 */

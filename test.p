@@ -3,12 +3,15 @@ PROGRAM addition;
 VAR 
     G : UINTEGER.
 
-FUNCTION add(a, b : UINTEGER) : UINTEGER
+FUNCTION factorial(n : UINTEGER) : UINTEGER
 BEGIN
-    add := a + b
+    IF n == 0 THEN 
+        factorial := 1
+    ELSE
+        factorial := n * factorial(n - 1)
 END.
 
 BEGIN
-    G := add(9999, 1);
+    G := factorial(10);
     DISPLAY G
 END.
