@@ -1,17 +1,21 @@
 PROGRAM addition;
 
 VAR 
-    G : UINTEGER.
+    G : BOOLEAN.
 
-FUNCTION factorial(n : UINTEGER) : UINTEGER
+FUNCTION max(a, b : UINTEGER) : BOOLEAN
+VAR res : UINTEGER
 BEGIN
-    IF n == 0 THEN 
-        factorial := 1
+    IF a > b THEN
+        res := TRUE
+    ELSE IF a == b THEN
+        res := FALSE
     ELSE
-        factorial := n * factorial(n - 1)
+        res := FALSE;
+    max := res
 END.
 
 BEGIN
-    G := factorial(10);
+    G := max(10, 10);
     DISPLAY G
 END.

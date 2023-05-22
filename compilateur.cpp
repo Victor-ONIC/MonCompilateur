@@ -47,27 +47,27 @@ bool IsVarDeclared(std::string name) {
 
 
 struct Subroutine {
-	std::vector<Variable> arguments;
-	// std::set<Variable> local;
-	TYPE returnType;
 	bool defined;
+	TYPE returnType;
+	std::vector<Variable> arguments;
+	std::vector<Variable> local;
 };
 
 std::map<std::string, Subroutine> DeclaredSubroutines;
 
+// DÉCLARATION
 bool IsSubroutineDeclared(std::string name) {
 	return DeclaredSubroutines.find(name) != DeclaredSubroutines.end();
 }
-
+// DÉFINITION
 bool IsSubroutineDefined(std::string name) {
 	return IsSubroutineDeclared(name) && DeclaredSubroutines[name].defined;
 }
 
 bool IsArgument(std::string name, std::string functionName) {
-	if (!IsSubroutineDefined(functionName)) return false;
-	std::vector<Variable> v = DeclaredSubroutines[functionName].arguments;
-	Variable valeur = {name};
-	return std::find(v.begin(), v.end(), valeur) != v.end();
+	std::vector<Variable>& v = DeclaredSubroutines[functionName].arguments;
+	Variable vv = {name};
+	return std::find(v.begin(), v.end(), vv) != v.end();
 }
 
 bool is_subroutine = false;
@@ -114,7 +114,7 @@ bool IsIntegral(TYPE type) {
 
 TYPE Expression();  // Called by Term and calls Term
 void Statement();  // Cross references between statement parts
-TYPE FunctionCall(std::string);  // Called by Identifier
+TYPE FunctionCall(std::string);  // To keep nice ordering (called by Identifier)
 
 TYPE Identifier() {
 	if (current != ID) {
@@ -137,11 +137,19 @@ TYPE Identifier() {
 	}
 
 	if (is_subroutine) {
-		std::vector<Variable> v = DeclaredSubroutines[currentSubroutine].arguments;
-		for (int i = 0; i < v.size(); i++) {
-			if (v[i].name == id) {
+		std::vector<Variable> argumentsVector = DeclaredSubroutines[currentSubroutine].arguments;
+		for (int i = 0; i < argumentsVector.size(); i++) {
+			if (argumentsVector[i].name == id) {
 				std::cout << "\tpush " << 16 + 8 * i << "(%rbp)" << std::endl;
-				return v[i].type;
+				return argumentsVector[i].type;
+			}
+		}
+
+		std::vector<Variable> localVector = DeclaredSubroutines[currentSubroutine].local;
+		for (int i = 0; i < localVector.size(); i++) {
+			if (localVector[i].name == id) {
+				std::cout << "\tpush " << -8 - 8 * i << "(%rbp)" << std::endl;
+				return localVector[i].type;
 			}
 		}
 	}
@@ -286,6 +294,7 @@ TYPE FunctionCall(std::string functionName) {
 	return DeclaredSubroutines[functionName].returnType;
 }
 
+// ProcedureCall := Identifier "(" [Expression {"," Expression}] ")"
 void ProcedureCall(std::string procedureName) {
 	if (current != LPARENT) {
 		Error("(ProcedureCall) Erreur: Symbole `(` attendu!");
@@ -737,12 +746,21 @@ void AssignmentStatement() {
 			type = DeclaredSubroutines[currentSubroutine].returnType;
 		} else {
 			// Paramètres.
-			std::vector<Variable> v = DeclaredSubroutines[currentSubroutine].arguments;
-			for (int i = 0; i < v.size(); i++) {
-				if (v[i].name == id) {
+			std::vector<Variable> argumentsVector = DeclaredSubroutines[currentSubroutine].arguments;
+			for (int i = 0; i < argumentsVector.size(); i++) {
+				if (argumentsVector[i].name == id) {
 					found = true;
 					output = "\tpop " + std::to_string(16 + 8 *i) + "(%rbp)";
 					type = DeclaredSubroutines[currentSubroutine].returnType;
+				}
+			}
+			// Variables locales.
+			std::vector<Variable> localVector = DeclaredSubroutines[currentSubroutine].local;
+			for (int i = 0; i < localVector.size(); i++) {
+				if (localVector[i].name == id) {
+					found = true;
+					output = "\tpop " + std::to_string(-8 - 8 * i) + "(%rbp)";
+					type = localVector[i].type;
 				}
 			}
 		}
@@ -1152,6 +1170,8 @@ void ArgumentList(std::string functionName, std::vector<Variable>& arguments) {
 
 	if (liste.find(lexer->YYText()) != liste.end()) {
 		Error("(ArgumentList) Erreur: Argument `" + std::string(lexer->YYText()) + "` déjà déclaré!");
+	} else if (lexer->YYText() == functionName) {
+		Error("(ArgumentList) Erreur: Un argument ne peut pas avoir le même nom que sa fonction!");
 	}
 	liste.insert(lexer->YYText());
 	current = (TOKEN)lexer->yylex();
@@ -1160,6 +1180,8 @@ void ArgumentList(std::string functionName, std::vector<Variable>& arguments) {
 		current = (TOKEN)lexer->yylex();
 		if (liste.find(lexer->YYText()) != liste.end()) {
 			Error("(ArgumentList) Erreur: Argument `" + std::string(lexer->YYText()) + "` déjà déclaré!");
+		} else if (lexer->YYText() == functionName) {
+			Error("(ArgumentList) Erreur: Un argument ne peut pas avoir le même nom que sa fonction!");
 		}
 		liste.insert(lexer->YYText());
 		current = (TOKEN)lexer->yylex();
@@ -1179,7 +1201,65 @@ void ArgumentList(std::string functionName, std::vector<Variable>& arguments) {
 	}
 }
 
-// Function := "FUNCTION" Identifier "(" [ArgumentList {";" ArgumentList}] ")" ":" Type [BlockStatement]
+// LocalVarDeclaration := Identifier {"," Identifier} ":" TYPE
+void LocalVarDeclaration(std::string functionName) {
+	if (current != ID) {
+		Error("(LocalVarDeclaration) Erreur: Identifiant attendu!");
+	}
+
+	std::vector<Variable>& v = DeclaredSubroutines[functionName].arguments;
+	std::set<std::string> liste;
+
+	std::string id = lexer->YYText();
+	if (liste.find(id) != liste.end()) {
+		Error("(LocalVarDeclaration) Erreur: Argument `" + id + "` déjà déclaré!");
+	} else if (id == functionName) {
+		Error("(LocalVarDeclaration) Erreur: Variable locale `" + id + "` ne peut pas avoir le même nom que sa fonction!");
+	} else if (IsArgument(id, functionName)) {
+		Error("(LocalVarDeclaration) Erreur: Variable locale `" + id + "` ne peut pas avoir le même nom qu'un argument!");
+	}
+	liste.insert(id);
+	current = (TOKEN)lexer->yylex();
+
+	while(current == COMMA) {
+		current = (TOKEN)lexer->yylex();
+		id = lexer->YYText();
+		if (liste.find(id) != liste.end()) {
+			Error("(LocalVarDeclaration) Erreur: Argument `" + id + "` déjà déclaré!");
+		} else if (id == functionName) {
+			Error("(LocalVarDeclaration) Erreur: Variable locale `" + id + "` ne peut pas avoir le même nom que sa fonction!");
+		} else if (IsArgument(id, functionName)) {
+			Error("(LocalVarDeclaration) Erreur: Variable locale `" + id + "` ne peut pas avoir le même nom qu'un argument!");
+		}
+		liste.insert(id);
+		current = (TOKEN)lexer->yylex();
+	}
+
+	if (current != COLON) {
+		Error("(ArgumentList) Erreur: Symbole `:` attendu!");
+	}
+	current = (TOKEN)lexer->yylex();
+
+	TYPE varType = Type();
+	if (varType == WTFT) {
+		Error("(ArgumentList) Erreur: Type inconnu!");
+	}
+	for (std::string varName : liste) {
+		DeclaredSubroutines[functionName].local.push_back({varName, varType});
+	}
+}
+
+// LocalVarSection := "VAR" LocalVarDeclaration {";" LocalVarDeclaration}
+void LocalVarSection(std::string functionName) {
+	ReadKeyword("VAR");
+	LocalVarDeclaration(functionName);
+	while (current == SEMICOLON) {
+		current = (TOKEN)lexer->yylex();
+		LocalVarDeclaration(functionName);
+	}
+}
+
+// Function := "FUNCTION" Identifier "(" [ArgumentList {";" ArgumentList}] ")" ":" Type [[LocalVarSection] BlockStatement]
 void Function() {
 	ReadKeyword("FUNCTION");
 
@@ -1194,7 +1274,7 @@ void Function() {
 	}
 	current = (TOKEN)lexer->yylex();
 
-	std::vector<Variable> arguments;
+	std::vector<Variable> arguments;  // on ne touche pas à la struct car il pourrait déjà y avoir une déclaration
 	if (current == ID) {
 		ArgumentList(functionName, arguments);
 		while (current == SEMICOLON) {
@@ -1225,9 +1305,9 @@ void Function() {
 		}
 	} else {
 		Subroutine S = {
-			arguments,
+			false,
 			returnType,
-			false
+			arguments
 		};
 		DeclaredSubroutines[functionName] = S;
 	}
@@ -1237,18 +1317,24 @@ void Function() {
 			Error("(Function) Erreur: Fonction `" + functionName + "` déjà définie!");
 		}
 
+		if (strcmp("VAR", lexer->YYText()) == 0) {
+			LocalVarSection(functionName);
+		}
+
 		std::cout << functionName << ":" << std::endl;
 		std::cout << "\tpush %rbp" << std::endl;
 		std::cout << "\tmovq %rsp, %rbp" << std::endl;
-		// subq $varlocales, %rsp
+		std::cout << "\tsubq $" << DeclaredSubroutines[functionName].local.size() * 8 << ", %rsp" << std::endl;
 
 		is_subroutine = true;
 		currentSubroutine = functionName;
 		BlockStatement();
 		currentSubroutine = "";
 		is_subroutine = false;
+
 		DeclaredSubroutines[functionName].defined = true;
 
+		std::cout << "\taddq $" << DeclaredSubroutines[functionName].local.size() * 8 << ", %rsp" << std::endl;
 		std::cout << "\tpop %rbp" << std::endl;
 		std::cout << "\tret" << std::endl;
 	}
@@ -1266,7 +1352,7 @@ void FunctionSection() {
 	}
 }
 
-// Procedure := "PROCEDURE" Identifier "(" [ArgumentList {";" ArgumentList}] ")" ";" [BlockStatement]
+// Procedure := "PROCEDURE" Identifier "(" [ArgumentList {";" ArgumentList}] ")" [[LocalVarSection] BlockStatement]
 void Procedure() {
 	ReadKeyword("PROCEDURE");
 
@@ -1281,7 +1367,7 @@ void Procedure() {
 	}
 	current = (TOKEN)lexer->yylex();
 
-	std::vector<Variable> arguments;
+	std::vector<Variable> arguments;  // on ne touche pas à la struct car il pourrait déjà y avoir une déclaration
 	if (current == ID) {
 		ArgumentList(procedureName, arguments);
 		while (current == SEMICOLON) {
@@ -1302,9 +1388,9 @@ void Procedure() {
 		}
 	} else {
 		Subroutine S = {
-			arguments,
+			false,
 			WTFT,
-			false
+			arguments
 		};
 		DeclaredSubroutines[procedureName] = S;
 	}
@@ -1314,18 +1400,24 @@ void Procedure() {
 			Error("(Procedure) Erreur: Procédure `" + procedureName + "` déjà définie!");
 		}
 
+		if (strcmp("VAR", lexer->YYText()) == 0) {
+			LocalVarSection(procedureName);
+		}
+
 		std::cout << procedureName << ":" << std::endl;
 		std::cout << "\tpush %rbp" << std::endl;
 		std::cout << "\tmovq %rsp, %rbp" << std::endl;
-		// subq $varlocales, %rsp
+		std::cout << "\tsubq $" << DeclaredSubroutines[procedureName].local.size() * 8 << ", %rsp" << std::endl;
 
 		is_subroutine = true;
 		currentSubroutine = procedureName;
 		BlockStatement();
 		currentSubroutine = "";
 		is_subroutine = false;
+
 		DeclaredSubroutines[procedureName].defined = true;
 
+		std::cout << "\taddq $" << DeclaredSubroutines[procedureName].local.size() * 8 << ", %rsp" << std::endl;
 		std::cout << "\tpop %rbp" << std::endl;
 		std::cout << "\tret" << std::endl;
 	}
@@ -1447,19 +1539,18 @@ Ex: les RECORDs (structures, types définis par l'utilisateur).
 // À IMPLÉMENTER
 /*
 -? DeclaredVariables as a map
-- variables locales aux fonctions ?
 
 - void Warning(std::string s);  // conversions, fonctions vides, blocks vides...
 	- conversions implicites
-	- fonctions vides
 	- pas de valeur de retour
+	- fonctions vides
 	- blocks vides
 	- case vide
-- cast explicite 
+- cast explicite
 - REPEAT
-- write
+- write + Error supprime le fichier
 - struct = record
-- restructurer tout !!! (retirer commentaires inutiles, commenter les fonctions d'analyse elles-mêmes)
+- restructurer tout !!! (retirer commentaires et erreurs inutiles, commenter les fonctions d'analyse elles-mêmes, REFERENCES là où c'est mieux)
 - stringconst (retirer les \n des FormatStrings)
 - entiers signés
 */
@@ -1498,18 +1589,71 @@ Ex: les RECORDs (structures, types définis par l'utilisateur).
 // VarDeclaration := Identifier {"," Identifier} ":" Type
 // VarSection := "VAR" VarDeclaration {";" VarDeclaration}
 // ArgumentList := Identifier {"," Identifier} ":" Type
-// Function := "FUNCTION" Identifier "(" [ArgumentList {";" ArgumentList}] ")" ":" Type [BlockStatement]
+// LocalVarDeclaration := Identifier {"," Identifier} ":" TYPE
+// LocalVarSection := "VAR" LocalVarDeclaration {";" LocalVarDeclaration}
+// Function := "FUNCTION" Identifier "(" [ArgumentList {";" ArgumentList}] ")" ":" Type [[LocalVarSection] BlockStatement]
 // FunctionSection := Function {";" Function}
-// Procedure := "PROCEDURE" Identifier "(" [ArgumentList {";" ArgumentList}] ")" [BlockStatement]
+// Procedure := "PROCEDURE" Identifier "(" [ArgumentList {";" ArgumentList}] ")" [[LocalVarSection] BlockStatement]
 // ProcedureSection := Procedure {";" Procedure}
 // Program := "PROGRAM" Identifier ";" [VarSection "."] [FunctionSection "."] [ProcedureSection "."] BlockStatement "."
 */
 
+// STRING
 /*
-Concaténer des strings:
-1. strlen sur les deux -> taille totale après concaténation
-2. rdi -> malloc cette taille + 1 -> rax
-3. strcat rsi rdi - rsi première string & rdi @ malloc
-4. strcat rsi rdi - rsi deuxième string & rdi @ malloc
-Variables de type STRING stockées dans .quad.
+.data
+.align 8
+format_string_int:    .string "%llu\n"
+format_string_float:    .string "%f\n"
+format_string_char:    .string "%c\n"
+format_string_string:    .string "%s\n"
+internal_string_0:    .string "hello"
+internal_string_1:    .string " world"
+
+s1:    .quad 0
+s2:    .quad 0
+s3:    .quad 0
+
+.text
+.globl main
+
+main:
+    movq %rsp, %rbp
+    push $internal_string_0
+    pop s1
+    push $internal_string_1
+    pop s2
+    push s1
+    push s2
+    movq 16(%rsp), %rdi
+    call strlen
+    push %rax
+    movq 16(%rsp), %rdi
+    call strlen
+    push %rax
+    pop %rbx
+    pop %rax
+    addq %rbx, %rax
+    addq $1, %rax
+    movq %rax, %rdi
+    call malloc
+    push %rax
+    mov (%rsp), %rdi
+    mov 16(%rsp), %rsi
+    call strcat
+    mov (%rsp), %rdi
+    mov 8(%rsp), %rsi
+    call strcat
+    pop %rax
+    subq $16, %rsp
+    push %rax
+    pop s3
+    push s3
+    movq $format_string_string, %rdi
+    movq (%rsp), %rsi
+    movl    $0, %eax
+    call    printf@PLT
+    addq    $8, %rsp
+    movq %rbp, %rsp        # Restore the position of the stack's top
+    mov $0, %eax
+    ret
 */
