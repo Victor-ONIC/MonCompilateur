@@ -276,10 +276,49 @@ TYPE FunctionCall(std::string functionName) {
 	current = (TOKEN)lexer->yylex();
 
 	if (current != RPARENT) {
-		Expression();
+		unsigned long long i = 0;
+		TYPE exprType;
+		
+		exprType = Expression();
+		switch (DeclaredSubroutines[functionName].arguments[i++].type) {
+			case UINTEGER:
+			case BOOLEAN:
+			case CHAR:
+				if (exprType == DOUBLE) {
+					// Arrondir à l'entier le plus proche.
+					std::cout << "\tfldl (%rsp)" << std::endl;
+					std::cout << "\tfistpq (%rsp)" << std::endl;
+				}
+				break;
+			case DOUBLE:
+				if (IsIntegral(exprType)) {
+					// Convertir d'entier à flottant 64 bits.
+					std::cout << "\tfild (%rsp)" << std::endl;
+					std::cout << "\tfstpl (%rsp)" << std::endl;
+				}
+				break;
+		}
 		while (current == COMMA) {
 			current = (TOKEN)lexer->yylex();
-			Expression();
+			exprType = Expression();
+			switch (DeclaredSubroutines[functionName].arguments[i++].type) {
+				case UINTEGER:
+				case BOOLEAN:
+				case CHAR:
+					if (exprType == DOUBLE) {
+						// Arrondir à l'entier le plus proche.
+						std::cout << "\tfldl (%rsp)" << std::endl;
+						std::cout << "\tfistpq (%rsp)" << std::endl;
+					}
+					break;
+				case DOUBLE:
+					if (IsIntegral(exprType)) {
+						// Convertir d'entier à flottant 64 bits.
+						std::cout << "\tfild (%rsp)" << std::endl;
+						std::cout << "\tfstpl (%rsp)" << std::endl;
+					}
+					break;
+			}
 		}
 	}
 
@@ -302,10 +341,49 @@ void ProcedureCall(std::string procedureName) {
 	current = (TOKEN)lexer->yylex();
 
 	if (current != RPARENT) {
-		Expression();
+		unsigned long long i = 0;
+		TYPE exprType;
+		
+		exprType = Expression();
+		switch (DeclaredSubroutines[procedureName].arguments[i++].type) {
+			case UINTEGER:
+			case BOOLEAN:
+			case CHAR:
+				if (exprType == DOUBLE) {
+					// Arrondir à l'entier le plus proche.
+					std::cout << "\tfldl (%rsp)" << std::endl;
+					std::cout << "\tfistpq (%rsp)" << std::endl;
+				}
+				break;
+			case DOUBLE:
+				if (IsIntegral(exprType)) {
+					// Convertir d'entier à flottant 64 bits.
+					std::cout << "\tfild (%rsp)" << std::endl;
+					std::cout << "\tfstpl (%rsp)" << std::endl;
+				}
+				break;
+		}
 		while (current == COMMA) {
 			current = (TOKEN)lexer->yylex();
-			Expression();
+			exprType = Expression();
+			switch (DeclaredSubroutines[procedureName].arguments[i++].type) {
+				case UINTEGER:
+				case BOOLEAN:
+				case CHAR:
+					if (exprType == DOUBLE) {
+						// Arrondir à l'entier le plus proche.
+						std::cout << "\tfldl (%rsp)" << std::endl;
+						std::cout << "\tfistpq (%rsp)" << std::endl;
+					}
+					break;
+				case DOUBLE:
+					if (IsIntegral(exprType)) {
+						// Convertir d'entier à flottant 64 bits.
+						std::cout << "\tfild (%rsp)" << std::endl;
+						std::cout << "\tfstpl (%rsp)" << std::endl;
+					}
+					break;
+			}
 		}
 	}
 
@@ -843,21 +921,43 @@ void WhileStatement() {
 
 	std::cout << "TestWhile" << tag << ":" << std::endl;
 
-	TYPE exprType = Expression();  // reconnaître Expression
+	TYPE exprType = Expression();
 	if (exprType != BOOLEAN) {
-		Error("(WhileStatement) Erreur: Type booléen attendu ! (" + typeString[exprType] + " lu)");
+		Error("(WhileStatement) Erreur: Expression booléenne attendue ! (" + typeString[exprType] + " lue)");
 	}
 
-	std::cout << "\tpop %rax" << std::endl;  // %rax contient le résultat
+	std::cout << "\tpop %rax" << std::endl;
 	std::cout << "\tcmpq $0, %rax" << std::endl;
 	std::cout << "\tje EndWhile" << tag << std::endl;
 
 	ReadKeyword("DO");
 
-	Statement();  // reconnaître Statement
+	Statement();
 
 	std::cout << "\tjmp TestWhile" << tag << std::endl;
 	std::cout << "EndWhile" << tag << ":" << std::endl;
+}
+
+// RepeatStatement := "REPEAT" Statement "UNTIL" Expression
+void RepeatStatement() {
+	unsigned long long tag = ++TagNumber;
+
+	ReadKeyword("REPEAT");
+	
+	std::cout << "Repeat" << tag << ":" << std::endl;
+
+	Statement();
+
+	ReadKeyword("UNTIL");
+
+	TYPE exprType = Expression();
+	if (exprType != BOOLEAN) {
+		Error("(RepeatStatement) Erreur: Expression booléenne attendue ! (" + typeString[exprType] + " lue)");
+	}
+	
+	std::cout << "\tpop %rax" << std::endl;
+	std::cout << "\tcmpq $0, %rax" << std::endl;
+	std::cout << "\tjne Repeat" << tag << std::endl;
 }
 
 // ForStatement := "FOR" AssignmentStatement ("TO" | "DOWNTO") Expression "DO" Statement
@@ -1054,7 +1154,7 @@ void CaseStatement() {
 	std::cout << "\taddq $8, %rsp" << std::endl;
 }
 
-// Statement := AssignmentStatement | IfStatement | WhileStatement | ForStatement | BlockStatement | DisplayStatement | CaseStatement
+// Statement := AssignmentStatement | IfStatement | WhileStatement | RepeatStatement | ForStatement | BlockStatement | DisplayStatement | CaseStatement
 void Statement() {
 	if (current == ID) {
 		AssignmentStatement();
@@ -1063,6 +1163,8 @@ void Statement() {
 			IfStatement();
 		} else if (strcmp("WHILE", lexer->YYText()) == 0) {
 			WhileStatement();
+		} else if (strcmp("REPEAT", lexer->YYText()) == 0) {
+			RepeatStatement();
 		} else if (strcmp("FOR", lexer->YYText()) == 0) {
 			ForStatement();
 		} else if (strcmp("BEGIN", lexer->YYText()) == 0) {
@@ -1324,7 +1426,12 @@ void Function() {
 		std::cout << functionName << ":" << std::endl;
 		std::cout << "\tpush %rbp" << std::endl;
 		std::cout << "\tmovq %rsp, %rbp" << std::endl;
-		std::cout << "\tsubq $" << DeclaredSubroutines[functionName].local.size() * 8 << ", %rsp" << std::endl;
+
+		unsigned long long size = DeclaredSubroutines[functionName].local.size();
+		if (size > 0) {
+			size *= 8;
+			std::cout << "\tsubq $" << size << ", %rsp" << std::endl;
+		}
 
 		is_subroutine = true;
 		currentSubroutine = functionName;
@@ -1407,7 +1514,12 @@ void Procedure() {
 		std::cout << procedureName << ":" << std::endl;
 		std::cout << "\tpush %rbp" << std::endl;
 		std::cout << "\tmovq %rsp, %rbp" << std::endl;
-		std::cout << "\tsubq $" << DeclaredSubroutines[procedureName].local.size() * 8 << ", %rsp" << std::endl;
+
+		unsigned long long size = DeclaredSubroutines[procedureName].local.size();
+		if (size > 0) {
+			size *= 8;
+			std::cout << "\tsubq $" << size << ", %rsp" << std::endl;
+		}
 
 		is_subroutine = true;
 		currentSubroutine = procedureName;
@@ -1539,6 +1651,9 @@ Ex: les RECORDs (structures, types définis par l'utilisateur).
 // À IMPLÉMENTER
 /*
 -? DeclaredVariables as a map
+- REPEAT
+- stringconst (retirer les \n des FormatStrings)
+- cast explicite
 
 - void Warning(std::string s);  // conversions, fonctions vides, blocks vides...
 	- conversions implicites
@@ -1546,12 +1661,9 @@ Ex: les RECORDs (structures, types définis par l'utilisateur).
 	- fonctions vides
 	- blocks vides
 	- case vide
-- cast explicite
-- REPEAT
 - write + Error supprime le fichier
 - struct = record
 - restructurer tout !!! (retirer commentaires et erreurs inutiles, commenter les fonctions d'analyse elles-mêmes, REFERENCES là où c'est mieux)
-- stringconst (retirer les \n des FormatStrings)
 - entiers signés
 */
 
@@ -1579,12 +1691,13 @@ Ex: les RECORDs (structures, types définis par l'utilisateur).
 // AssignmentStatement := Identifier ":=" Expression
 // IfStatement := "IF" Expression "THEN" Statement ["ELSE" Statement]
 // WhileStatement := "WHILE" Expression "DO" Statement
+// RepeatStatement := "REPEAT" Statement "UNTIL" Expression
 // ForStatement := "FOR" AssignmentStatement ("TO" | "DOWNTO") Expression "DO" Statement
 // DisplayStatement := "DISPLAY" Expression
 // CaseLabelList := Constant {"," Constant}
 // CaseElement := CaseLabelList ":" Statement
 // CaseStatement := "CASE" Expression "OF" CaseElement {";" CaseElement} [";" "ELSE" Statement] "END"
-// Statement := AssignmentStatement | IfStatement | WhileStatement | ForStatement | BlockStatement | DisplayStatement | CaseStatement
+// Statement := AssignmentStatement | IfStatement | WhileStatement | RepeatStatement | ForStatement | BlockStatement | DisplayStatement | CaseStatement
 //
 // VarDeclaration := Identifier {"," Identifier} ":" Type
 // VarSection := "VAR" VarDeclaration {";" VarDeclaration}
@@ -1656,4 +1769,9 @@ main:
     movq %rbp, %rsp        # Restore the position of the stack's top
     mov $0, %eax
     ret
+*/
+
+// README
+/*
+Instructions SSE découvertes et c'est franchement pas mal!
 */

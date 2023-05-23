@@ -3,19 +3,16 @@ PROGRAM addition;
 VAR 
     G : BOOLEAN.
 
-FUNCTION max(a, b : UINTEGER) : BOOLEAN
-VAR res : UINTEGER
+PROCEDURE display_loop(a : UINTEGER)
 BEGIN
-    IF a > b THEN
-        res := TRUE
-    ELSE IF a == b THEN
-        res := FALSE
-    ELSE
-        res := FALSE;
-    max := res
+    REPEAT
+    BEGIN
+        DISPLAY a;
+        a := a - 1
+    END
+    UNTIL a > 0
 END.
 
 BEGIN
-    G := max(10, 10);
-    DISPLAY G
+    display_loop(10)
 END.
