@@ -1,7 +1,7 @@
-#include <cstdlib>
 #include <iostream>
 #include <cstring>
 #include <string>
+#include <sstream>
 #include <set>
 #include <vector>
 #include <map>
@@ -12,7 +12,7 @@
 enum OPREL { EQU, DIFF, INF, SUP, INFE, SUPE, WTFR };
 enum OPADD { ADD, SUB, OR, WTFA };
 enum OPMUL { MUL, DIV, MOD, AND, WTFM };
-enum TYPE { UINTEGER, BOOLEAN, DOUBLE, CHAR, WTFT };
+enum TYPE { UINTEGER, BOOLEAN, DOUBLE, CHAR, STRING, WTFT };
 
 // Traduction de ENUM à STRING pour afficher des erreurs plus lisibles.
 std::string tokenString[] = {
@@ -21,7 +21,7 @@ std::string tokenString[] = {
 	"RELOP", "NOT", "ASSIGN", "KEYWORD", "COLON", "FLOATCONST", "CHARCONST"
 };
 std::string typeString[] = {
-	"UINTEGER", "BOOLEAN", "DOUBLE", "CHAR"
+	"UINTEGER", "BOOLEAN", "DOUBLE", "CHAR", "STRING"
 };
 
 
@@ -85,6 +85,12 @@ FlexLexer* lexer = new yyFlexLexer;
 // Valeur incrémentale qui permet d'avoir plusieurs étiquettes du même nom.
 unsigned long long TagNumber = 0;
 
+// Stocker les directives de données internes (strings).
+std::stringstream internalData;
+// Pour chaque FormatString, doit-on l'afficher ?
+std::map<std::string, bool> FS = {
+	{"LLU", false}, {"F", false}, {"C", false}, {"B", false}
+};
 
 
 /// Arrêt total du programme, laissant la compilation inachevée.
@@ -221,7 +227,24 @@ TYPE Character() {
 	return CHAR;
 }
 
-// Type := "UINTEGER" | "BOOLEAN" | "DOUBLE" | "CHAR"
+TYPE String() {
+	unsigned long long tag = ++TagNumber;
+
+	if (current != STRINGCONST) {
+		Error("(String) Erreur: Constante string attendue!");
+	}
+
+	internalData << "S" << tag << ":" << std::endl;
+	internalData << "\t.string " << lexer->YYText() << std::endl;
+
+	std::cout << "\tpush $S" << tag << std::endl;
+
+	current = (TOKEN)lexer->yylex();
+
+	return STRING;
+}
+
+// Type := "UINTEGER" | "BOOLEAN" | "DOUBLE" | "CHAR" | "STRING"
 TYPE Type() {
 	if (current != KEYWORD) {
 		Error("(Type) Erreur: Nom de type attendu!");
@@ -236,6 +259,8 @@ TYPE Type() {
 		type = DOUBLE;
 	} else if (strcmp(lexer->YYText(), "CHAR") == 0) {
 		type = CHAR;
+	} else if (strcmp("STRING", lexer->YYText()) == 0) {
+		type = STRING;
 	} else {
 		type = WTFT;
 	}
@@ -244,7 +269,7 @@ TYPE Type() {
 	return type;
 }
 
-// Constant := Number | Boolean | Float | Character
+// Constant := Number | Boolean | Float | Character | String
 TYPE Constant() {
 	TYPE returnType;
 
@@ -260,6 +285,9 @@ TYPE Constant() {
 			break;
 		case CHARCONST:
 			returnType = Character();
+			break;
+		case STRINGCONST:
+			returnType = String();
 			break;
 		default:
 			Error("(Constant) Erreur: Constante inconnue!");
@@ -465,6 +493,10 @@ TYPE Term() {
 
 		TYPE operandType = Factor();
 
+		if (operandType == STRING) {
+			Error("(Term) Opération sur string impossible!");
+		}
+
 		// Si au moins une opérande est DOUBLE, alors le type de l'expression est DOUBLE.
 		// Sinon, le type de l'expression est UINTEGER.
 
@@ -587,6 +619,15 @@ TYPE SimpleExpression(){
 
 		TYPE operandType = Term();
 
+		bool concat = false;
+		if (returnType == STRING || operandType == STRING) {
+			if (returnType != operandType || adop != ADD) {
+				Error("(SimpleExpression) Erreur: Opération sur string impossible!");
+			}
+			// Deux string, addition -> OK
+			concat = true;
+		}  // TODO opérandes, opération de concaténation
+
 		// Si au moins une opérande est DOUBLE, alors le type de l'expression est DOUBLE.
 		// Sinon, le type de l'expression est UINTEGER.
 
@@ -642,6 +683,9 @@ TYPE SimpleExpression(){
 				std::cout << "\tpush %rax" << std::endl;
 				break;
 			case ADD:
+				if (concat) {
+
+				}
 				if (FPU) {
 					std::cout << "\tfaddp %st(0), %st(1)" << std::endl;  // %st(0) + %st(1) => %st(1) puis pop
 					std::cout << "\tsubq $8, %rsp" << std::endl;
@@ -708,6 +752,10 @@ TYPE Expression() {
 		OPREL oprel = RelationalOperator();
 
 		TYPE operandType = SimpleExpression();
+
+		if (operandType == STRING) {
+			Error("(Expression) Erreur: Opération sur string impossible!");
+		}
 
 		// Si au moins une opérande est DOUBLE, alors le type de l'expression est DOUBLE.
 		// Sinon, le type de l'expression est UINTEGER.
@@ -874,6 +922,10 @@ void AssignmentStatement() {
 				std::cout << "\tfild (%rsp)" << std::endl;
 				std::cout << "\tfstpl (%rsp)" << std::endl;
 			}
+		case STRING:
+			if (exprType != STRING) {
+				Error("(AssignmentStatement) Erreur: Impossible d'assigner le type `" + typeString[exprType] + "` au type `STRING`!");
+			}
 			break;
 	}
 
@@ -954,7 +1006,7 @@ void RepeatStatement() {
 	if (exprType != BOOLEAN) {
 		Error("(RepeatStatement) Erreur: Expression booléenne attendue ! (" + typeString[exprType] + " lue)");
 	}
-	
+
 	std::cout << "\tpop %rax" << std::endl;
 	std::cout << "\tcmpq $0, %rax" << std::endl;
 	std::cout << "\tjne Repeat" << tag << std::endl;
@@ -966,7 +1018,32 @@ void ForStatement() {
 
 	ReadKeyword("FOR");
 
-	std::string var = lexer->YYText();  // nom de la variable utilisée lors de l'incrémentation (prochain token)
+	bool found = false;
+	std::string position;
+	std::string id = lexer->YYText();  // nom de la variable utilisée lors de l'incrémentation (prochain token)
+	if (is_subroutine) {
+		// arguments
+		std::vector<Variable> argumentsVector = DeclaredSubroutines[currentSubroutine].arguments;
+		for (int i = 0; i < argumentsVector.size(); i++) {
+			if (argumentsVector[i].name == id) {
+				position = std::to_string(16 + 8 * i) + "(%rbp)";
+				found = true;
+			}
+		}
+		// varibales locales
+		std::vector<Variable> localVector = DeclaredSubroutines[currentSubroutine].local;
+		for (int i = 0; i < localVector.size(); i++) {
+			if (localVector[i].name == id) {
+				position = std::to_string(-8 - 8 * i) + "(%rbp)";
+				found = true;
+			}
+		}
+	}
+	if (!found) {
+		// varibales globales
+		position = id;
+	}
+
 	std::cout << "For" << tag << ":" << std::endl;
 
 	AssignmentStatement();  // reconnaître AssignmentStatement
@@ -997,14 +1074,14 @@ void ForStatement() {
 	}
 
 	std::cout << "\tpop %rax" << std::endl;  // %rax contient le résultat
-	std::cout << "\tcmpq %rax, " << var << std::endl;
+	std::cout << "\tcmpq %rax, " << position << std::endl;
 	std::cout << jump << tag << std::endl;
 	
 	ReadKeyword("DO");
 
 	Statement();  // reconnaître Statement
 
-	std::cout << increment << var << std::endl;  // incrémenter l'entier
+	std::cout << increment << position << std::endl;  // incrémenter l'entier
 	std::cout << "\tjmp TestFor" << tag << std::endl;
 	std::cout << "EndFor" << tag << ":" << std::endl;
 }
@@ -1017,21 +1094,30 @@ void DisplayStatement() {
 
 	switch (exprType) {
 		case UINTEGER:
+			if (!FS["LLU"]) {
+				FS["LLU"] = true;
+				internalData << "FSLLU:\n\t.string \"%llu\\n\"" << std::endl;
+			}
 			std::cout << "\tpop %rdx"                    << std::endl;
-			std::cout << "\tmovq $FormatStringLLU, %rsi" << std::endl;
+			std::cout << "\tmovq $FSLLU, %rsi"           << std::endl;
 			std::cout << "\tmovl $0, %eax"               << std::endl;
 			std::cout << "\tmovl $1, %edi"               << std::endl;
 			std::cout << "\tcall __printf_chk@PLT"       << std::endl;
 			break;
 		case BOOLEAN: {
+			if (!FS["B"]) {
+				FS["B"] = true;
+				internalData << "FSTRUE:\n\t.string \"TRUE\\n\"" << std::endl;
+				internalData << "FSFALSE:\n\t.string \"FALSE\\n\"" << std::endl;
+			}
 			unsigned long long tag = ++TagNumber;
 			std::cout << "\tpop %rdx"                << std::endl;
 			std::cout << "\tcmpq $0, %rdx"           << std::endl;
 			std::cout << "\tje False" << tag         << std::endl;
-			std::cout << "\tmovq $TrueString, %rsi"  << std::endl;
+			std::cout << "\tmovq $FSTRUE, %rsi"      << std::endl;
 			std::cout << "\tjmp Suite" << tag        << std::endl;
 			std::cout << "False" << tag << ":"       << std::endl;
-			std::cout << "\tmovq $FalseString, %rsi" << std::endl;
+			std::cout << "\tmovq $FSFALSE, %rsi"     << std::endl;
 			std::cout << "Suite" << tag << ":"       << std::endl;
 			std::cout << "\tmovl $0, %eax"           << std::endl;
 			std::cout << "\tmovl $1, %edi"           << std::endl;
@@ -1039,16 +1125,30 @@ void DisplayStatement() {
 			break;
 		}
 		case DOUBLE:
+			if (!FS["F"]) {
+				FS["F"] = true;
+				internalData << "FSF:\n\t.string \"%lf\\n\"" << std::endl;
+			}
 			std::cout << "\tmovsd (%rsp), %xmm0"       << std::endl;
-			std::cout << "\tmovq $FormatStringF, %rsi" << std::endl;
+			std::cout << "\tmovq $FSF, %rsi"           << std::endl;
 			std::cout << "\tmovl $1, %eax"             << std::endl;
 			std::cout << "\tmovl $1, %edi"             << std::endl;
 			std::cout << "\tcall __printf_chk@PLT"     << std::endl;
 			std::cout << "\taddq $8, %rsp"             << std::endl;
 			break;
 		case CHAR:
+			if (!FS["C"]) {
+				FS["C"] = true;
+				internalData << "FSC:\n\t.string \"%c\\n\"" << std::endl;
+			}
 			std::cout << "\tpop %rdx"                  << std::endl;
-			std::cout << "\tmovq $FormatStringC, %rsi" << std::endl;
+			std::cout << "\tmovq $FSC, %rsi"           << std::endl;
+			std::cout << "\tmovl $0, %eax"             << std::endl;
+			std::cout << "\tmovl $1, %edi"             << std::endl;
+			std::cout << "\tcall __printf_chk@PLT"     << std::endl;
+			break;
+		case STRING:
+			std::cout << "\tpop %rsi"                  << std::endl;
 			std::cout << "\tmovl $0, %eax"             << std::endl;
 			std::cout << "\tmovl $1, %edi"             << std::endl;
 			std::cout << "\tcall __printf_chk@PLT"     << std::endl;
@@ -1063,6 +1163,10 @@ TYPE CaseLabelList() {
 	unsigned long long tag = TagNumber;  // numéro d'étiquette du Case actuel
 
 	TYPE returnType = Constant();  // reconnaître la constante
+
+	if (returnType == STRING) {
+		Error("(CaseLabelList) Erreur: Constante ne peut pas être string!");
+	}
 
 	std::cout << "\tpop %rax" << std::endl;
 	std::cout << "\tcmpq (%rsp), %rax" << std::endl;
@@ -1223,28 +1327,35 @@ void VarDeclaration() {
 			// .quad.
 			for (std::string variableName : variables) {
 				DeclaredVariables.insert({variableName, UINTEGER});  // déclarer
-				std::cout << variableName << ":\t.quad 0" << std::endl;  // créer
+				std::cout << variableName << ":\n\t.quad 0" << std::endl;  // créer
 			}
 			break;
 		case BOOLEAN:
 			// .byte OU .quad également, on n'est pas à ça près.
 			for (std::string variableName : variables) {
-				DeclaredVariables.insert({variableName, BOOLEAN});  // déclarer
-				std::cout << variableName << ":\t.quad 0" << std::endl;  // créer
+				DeclaredVariables.insert({variableName, BOOLEAN});
+				std::cout << variableName << ":\n\t.quad 0" << std::endl;
 			}
 			break;
 		case DOUBLE:
 			// .double
 			for (std::string variableName : variables) {
-				DeclaredVariables.insert({variableName, DOUBLE});  // déclarer
-				std::cout << variableName << ":\t.double 0.0" << std::endl;  // créer
+				DeclaredVariables.insert({variableName, DOUBLE});
+				std::cout << variableName << ":\n\t.double 0.0" << std::endl;
 			}
 			break;
 		case CHAR:
 			// .byte
 			for (std::string variableName : variables) {
-				DeclaredVariables.insert({variableName, CHAR});  // déclarer
-				std::cout << variableName << ":\t.byte 0" << std::endl;  // créer
+				DeclaredVariables.insert({variableName, CHAR});
+				std::cout << variableName << ":\n\t.byte 0" << std::endl;
+			}
+			break;
+		case STRING:
+			// .quad adresse
+			for (std::string variableName : variables) {
+				DeclaredVariables.insert({variableName, STRING});
+				std::cout << variableName << ":\n\t.quad 0" << std::endl;
 			}
 			break;
 		default:
@@ -1449,12 +1560,9 @@ void Function() {
 
 // FunctionSection := Function {";" Function}
 void FunctionSection() {
-	std::cout << std::endl;
-	std::cout << "\t.text" << std::endl;
 	Function();
 	while (current == SEMICOLON) {
 		current = (TOKEN)lexer->yylex();
-		std::cout << std::endl;
 		Function();
 	}
 }
@@ -1537,12 +1645,9 @@ void Procedure() {
 
 // ProcedureSection := Procedure {";" Procedure}
 void ProcedureSection() {
-	std::cout << std::endl;
-	std::cout << "\t.text" << std::endl;
 	Procedure();
 	while (current == SEMICOLON) {
 		current = (TOKEN)lexer->yylex();
-		std::cout << std::endl;
 		Procedure();
 	}
 }
@@ -1563,22 +1668,16 @@ void Program() {
 	}
 	current = (TOKEN)lexer->yylex();
 
-	// Header for gcc assembler / linker.
-	std::cout << std::endl;
-	std::cout << "\t.data" << std::endl;
-	std::cout << "FormatStringLLU:\t.string \"%llu\\n\"" << std::endl;
-	std::cout << "FormatStringF:\t.string \"%lf\\n\"" << std::endl;
-	std::cout << "FormatStringC:\t.string \"%c\\n\"" << std::endl;
-	std::cout << "TrueString:\t.string \"TRUE\\n\"" << std::endl;
-	std::cout << "FalseString:\t.string \"FALSE\\n\"" << std::endl;
-
 	if (current == KEYWORD && strcmp("VAR", lexer->YYText()) == 0) {
+		std::cout << "\t.data" << std::endl;
 		VarSection();
 		if (current != DOT) {
 			Error("(Program) Erreur: Symbole `.` attendu!");
 		}
 		current = (TOKEN)lexer->yylex();
 	}
+
+	std::cout << "\t.text" << std::endl;
 
 	if (current == KEYWORD && strcmp("FUNCTION", lexer->YYText()) == 0) {
 		FunctionSection();
@@ -1596,16 +1695,12 @@ void Program() {
 		current = (TOKEN)lexer->yylex();
 	}
 	
-	std::cout << std::endl;
-	std::cout << "\t.text"           << std::endl;
 	std::cout << "\t.globl main"     << std::endl;
 	// std::cout << "\t.align 8"     << std::endl;
 	std::cout << "main:"             << std::endl;
 	std::cout << "\tmovq %rsp, %rbp" << std::endl;
 
-	std::cout << std::endl;
 	BlockStatement();
-	std::cout << std::endl;
 
 	if (current != DOT) {
 		Error("(Program) Erreur: Symbole `.` attendu!");
@@ -1616,6 +1711,11 @@ void Program() {
 	std::cout << "\tmovq $0, %rax" << std::endl;  // valeur de retour de main égale à 0.
 	std::cout << "\tmovq %rbp, %rsp" << std::endl;
 	std::cout << "\tret" << std::endl;
+
+	if (!internalData.str().empty()) {
+		std::cout << "\t.data" << std::endl;
+		std::cout << internalData.str();
+	}
 }
 
 /// First version: Source code on standard input and assembly code on standard output.
@@ -1651,9 +1751,9 @@ Ex: les RECORDs (structures, types définis par l'utilisateur).
 // À IMPLÉMENTER
 /*
 -? DeclaredVariables as a map
-- REPEAT
-- stringconst (retirer les \n des FormatStrings)
+- stringconst  TODO concat ctrl+f TODO
 - cast explicite
+- return statement has to be last ? store value maybe ?
 
 - void Warning(std::string s);  // conversions, fonctions vides, blocks vides...
 	- conversions implicites
@@ -1675,8 +1775,9 @@ Ex: les RECORDs (structures, types définis par l'utilisateur).
 //    Boolean
 //    Float
 //    Character
-// Type := "UINTEGER" | "BOOLEAN" | "DOUBLE" | "CHAR"
-// Constant := Number | Boolean | Float | Character
+//    String
+// Type := "UINTEGER" | "BOOLEAN" | "DOUBLE" | "CHAR" | "STRING"
+// Constant := Number | Boolean | Float | Character | String
 // FunctionCall := Identifier "(" [Expression {"," Expression}] ")"
 // ProcedureCall := Identifier "(" [Expression {"," Expression}] ")"
 // Factor := "!" Factor | "(" Expression ")" | Identifier | Constant
@@ -1774,4 +1875,53 @@ main:
 // README
 /*
 Instructions SSE découvertes et c'est franchement pas mal!
+On différencie char et string par simple et double quotes.
+Les format strings ont un \n à la fin car l'instruction DISPLAY sert à afficher une valeur en particulier, donc sur sa propre ligne.
+*/
+
+// TESTS
+/*
+Un grand fichier de test avec un exemple de chaque fonctionnalité.
+Un répertoire de fichiers de tests individuels avec plusieurs exemples pour chaque fonctionnalité, testant tous les cas imaginables.
+
+1. Expressions
+	Addition
+	Soustraction
+	Or
+	Multiplication
+	Division
+	Modulo
+	And
+---> opérande 1 de chaque type, opérande 2 de chaque type, résultat de l'expression de chaque type
+
+2. Instructions
+	Block
+	Assignment
+	If
+	While
+	Repeat
+	For
+	Display
+	Case
+
+3. Subroutines
+	Functions
+		With(out) arguments
+			1. & 2.
+		With(out) local variables
+			1. & 2.
+	Procedures
+		With(out) arguments
+			1. & 2.
+		With(out) local variables
+			1. & 2.
+
+4. Sections
+	(Var)
+	(Function)
+	(Procedure)
+	Main
+
+5. Erreurs & Warnings
+
 */

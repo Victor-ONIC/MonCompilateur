@@ -1,18 +1,20 @@
 PROGRAM addition;
 
-VAR 
-    G : BOOLEAN.
-
-PROCEDURE display_loop(a : UINTEGER)
+FUNCTION add(a, b : UINTEGER) : UINTEGER
 BEGIN
-    REPEAT
-    BEGIN
-        DISPLAY a;
-        a := a - 1
-    END
-    UNTIL a > 0
+    add := a + b
+END;
+
+FUNCTION sub(a, b : UINTEGER) : UINTEGER
+BEGIN
+    sub := a - b
+END.
+
+PROCEDURE print(param : UINTEGER)
+BEGIN
+    DISPLAY param
 END.
 
 BEGIN
-    display_loop(10)
+    print(sub(9, 5) + add(9, 5))
 END.

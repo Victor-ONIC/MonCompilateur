@@ -90,7 +90,7 @@ mulop	(\*|\/|%|\&\&)
 relop	(\<|\>|"=="|\<=|\>=|!=)
 
 	// keyword: IF, THEN, ELSE, WHILE, DO, FOR, TO, BEGIN, ou END
-keyword (PROGRAM|FUNCTION|PROCEDURE|IF|THEN|ELSE|WHILE|DO|REPEAT|UNTIL|FOR|TO|DOWNTO|BEGIN|END|DISPLAY|CASE|OF|TRUE|FALSE|VAR|UINTEGER|BOOLEAN|DOUBLE|CHAR)
+keyword (PROGRAM|FUNCTION|PROCEDURE|IF|THEN|ELSE|WHILE|DO|REPEAT|UNTIL|FOR|TO|DOWNTO|BEGIN|END|DISPLAY|CASE|OF|TRUE|FALSE|VAR|UINTEGER|BOOLEAN|DOUBLE|CHAR|STRING)
 
 	// unknown: toute suite de un ou plus caractères DIFFÉRENTS de
 	// ", A-Z, a-z, 0-9, ' ', \n, \r, \t, (, ), <, >, =, !, %, &, |, }, -, ;, ou .
@@ -117,6 +117,7 @@ unknown [^\"A-Za-z0-9 \n\r\t\(\)\<\>\=\!\%\&\|\}\-\;\.]+
 
 
 
+{stringconst}	return STRINGCONST;
 {addop}		return ADDOP;
 {mulop}		return MULOP;
 {relop}		return RELOP;
@@ -125,7 +126,6 @@ unknown [^\"A-Za-z0-9 \n\r\t\(\)\<\>\=\!\%\&\|\}\-\;\.]+
 {keyword}	return KEYWORD;
 {id}		return ID;
 {character} 	return CHARCONST;
-{stringconst}	return STRINGCONST;
 "["			return LBRACKET;
 "]"			return RBRACKET;
 ","			return COMMA;
