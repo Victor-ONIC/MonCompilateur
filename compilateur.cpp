@@ -70,8 +70,8 @@ bool IsArgument(std::string name, std::string functionName) {
 	return std::find(v.begin(), v.end(), vv) != v.end();
 }
 
-bool is_subroutine = false;
-std::string currentSubroutine = "";
+bool is_subroutine;
+std::string currentSubroutine;
 
 
 
@@ -89,7 +89,8 @@ unsigned long long TagNumber = 0;
 std::stringstream internalData;
 // Pour chaque FormatString, doit-on l'afficher ?
 std::map<std::string, bool> FS = {
-	{"LLU", false}, {"F", false}, {"C", false}, {"B", false}
+	{"LLU", false}, {"F", false}, {"C", false}, {"B", false}, {"S", false},
+	{"LLUln", false}, {"Fln", false}, {"Cln", false}, {"Bln", false}, {"Sln", false}
 };
 
 
@@ -138,7 +139,7 @@ TYPE Identifier() {
 			Error("(Identifier) Erreur: Procédure n'a pas de valeur de retour!");
 		}
 		TYPE returnType = FunctionCall(id);
-		std::cout << "\tpush %rax" << std::endl;
+		std::cout << "\tpushq\t%rax" << std::endl;
 		return returnType;
 	}
 
@@ -146,7 +147,7 @@ TYPE Identifier() {
 		std::vector<Variable> argumentsVector = DeclaredSubroutines[currentSubroutine].arguments;
 		for (int i = 0; i < argumentsVector.size(); i++) {
 			if (argumentsVector[i].name == id) {
-				std::cout << "\tpush " << 16 + 8 * i << "(%rbp)" << std::endl;
+				std::cout << "\tpushq\t" << 16 + 8 * i << "(%rbp)" << std::endl;
 				return argumentsVector[i].type;
 			}
 		}
@@ -154,7 +155,7 @@ TYPE Identifier() {
 		std::vector<Variable> localVector = DeclaredSubroutines[currentSubroutine].local;
 		for (int i = 0; i < localVector.size(); i++) {
 			if (localVector[i].name == id) {
-				std::cout << "\tpush " << -8 - 8 * i << "(%rbp)" << std::endl;
+				std::cout << "\tpushq\t" << -8 - 8 * i << "(%rbp)" << std::endl;
 				return localVector[i].type;
 			}
 		}
@@ -163,7 +164,7 @@ TYPE Identifier() {
 	if (!IsVarDeclared(id)) {
 		Error("(Identifier) Erreur: Variable non déclarée!");
 	}
-	std::cout << "\tpush " << id << std::endl;
+	std::cout << "\tpushq\t" << id << std::endl;
 	return DeclaredVariables.find({id})->type;
 }
 
@@ -172,7 +173,7 @@ TYPE Number() {
 		Error("(Number) Erreur: Nombre entier attendu!");
 	}
 
-	std::cout << "\tpush $" << atoi(lexer->YYText()) << std::endl;
+	std::cout << "\tpushq\t$" << atoi(lexer->YYText()) << std::endl;
 
 	current = (TOKEN)lexer->yylex();  // reconnaître le NUMBER
 
@@ -185,9 +186,9 @@ TYPE Boolean() {
 	}
 
 	if (strcmp("TRUE", lexer->YYText()) == 0) {
-		std::cout << "\tpush $0xFFFFFFFFFFFFFFFF" << std::endl;
+		std::cout << "\tpushq\t$0xFFFFFFFFFFFFFFFF" << std::endl;
 	} else {
-		std::cout << "\tpush $0x0" << std::endl;
+		std::cout << "\tpushq\t$0x0" << std::endl;
 	}
 
 	current = (TOKEN)lexer->yylex();
@@ -205,8 +206,8 @@ TYPE Float() {
 	unsigned long long* i = (unsigned long long*)&f;
 
 	// On ne peut pas directement empiler, donc on passe par un registre.
-	std::cout << "\tmovq $" << *i << ", %rax" << std::endl;
-	std::cout << "\tpush %rax # Empile " << f << std::endl;
+	std::cout << "\tmovq\t$" << *i << ", %rax" << std::endl;
+	std::cout << "\tpushq\t%rax # Empile " << f << std::endl;
 
 	current = (TOKEN)lexer->yylex();  // reconnaître le FLOATCONST
 
@@ -218,9 +219,9 @@ TYPE Character() {
 		Error("(Character) Erreur: Constante caractère attendue!");
 	}
 
-	std::cout << "\tmovq $0, %rax" << std::endl;
-	std::cout << "\tmovb $" << lexer->YYText() << ", %al" << std::endl;
-	std::cout << "\tpush %rax" << std::endl;
+	std::cout << "\tmovq\t$0, %rax" << std::endl;
+	std::cout << "\tmovb\t$" << lexer->YYText() << ", %al" << std::endl;
+	std::cout << "\tpushq\t%rax" << std::endl;
 
 	current = (TOKEN)lexer->yylex();  // reconnaître le CHARCONST
 
@@ -237,7 +238,7 @@ TYPE String() {
 	internalData << "S" << tag << ":" << std::endl;
 	internalData << "\t.string " << lexer->YYText() << std::endl;
 
-	std::cout << "\tpush $S" << tag << std::endl;
+	std::cout << "\tpushq\t$S" << tag << std::endl;
 
 	current = (TOKEN)lexer->yylex();
 
@@ -314,15 +315,15 @@ TYPE FunctionCall(std::string functionName) {
 			case CHAR:
 				if (exprType == DOUBLE) {
 					// Arrondir à l'entier le plus proche.
-					std::cout << "\tfldl (%rsp)" << std::endl;
-					std::cout << "\tfistpq (%rsp)" << std::endl;
+					std::cout << "\tfldl\t(%rsp)" << std::endl;
+					std::cout << "\tfistpq\t(%rsp)" << std::endl;
 				}
 				break;
 			case DOUBLE:
 				if (IsIntegral(exprType)) {
 					// Convertir d'entier à flottant 64 bits.
-					std::cout << "\tfild (%rsp)" << std::endl;
-					std::cout << "\tfstpl (%rsp)" << std::endl;
+					std::cout << "\tfild\t(%rsp)" << std::endl;
+					std::cout << "\tfstpl\t(%rsp)" << std::endl;
 				}
 				break;
 		}
@@ -335,15 +336,15 @@ TYPE FunctionCall(std::string functionName) {
 				case CHAR:
 					if (exprType == DOUBLE) {
 						// Arrondir à l'entier le plus proche.
-						std::cout << "\tfldl (%rsp)" << std::endl;
-						std::cout << "\tfistpq (%rsp)" << std::endl;
+						std::cout << "\tfldl\t(%rsp)" << std::endl;
+						std::cout << "\tfistpq\t(%rsp)" << std::endl;
 					}
 					break;
 				case DOUBLE:
 					if (IsIntegral(exprType)) {
 						// Convertir d'entier à flottant 64 bits.
-						std::cout << "\tfild (%rsp)" << std::endl;
-						std::cout << "\tfstpl (%rsp)" << std::endl;
+						std::cout << "\tfild\t(%rsp)" << std::endl;
+						std::cout << "\tfstpl\t(%rsp)" << std::endl;
 					}
 					break;
 			}
@@ -355,8 +356,8 @@ TYPE FunctionCall(std::string functionName) {
 	}
 	current = (TOKEN)lexer->yylex();
 
-	std::cout << "\tcall " << functionName << std::endl;
-	std::cout << "\taddq $" << 8 * DeclaredSubroutines[functionName].arguments.size() << ", %rsp" << std::endl;
+	std::cout << "\tcall\t" << functionName << std::endl;
+	std::cout << "\taddq\t$" << 8 * DeclaredSubroutines[functionName].arguments.size() << ", %rsp" << std::endl;
 
 	return DeclaredSubroutines[functionName].returnType;
 }
@@ -379,15 +380,15 @@ void ProcedureCall(std::string procedureName) {
 			case CHAR:
 				if (exprType == DOUBLE) {
 					// Arrondir à l'entier le plus proche.
-					std::cout << "\tfldl (%rsp)" << std::endl;
-					std::cout << "\tfistpq (%rsp)" << std::endl;
+					std::cout << "\tfldl\t(%rsp)" << std::endl;
+					std::cout << "\tfistpq\t(%rsp)" << std::endl;
 				}
 				break;
 			case DOUBLE:
 				if (IsIntegral(exprType)) {
 					// Convertir d'entier à flottant 64 bits.
-					std::cout << "\tfild (%rsp)" << std::endl;
-					std::cout << "\tfstpl (%rsp)" << std::endl;
+					std::cout << "\tfild\t(%rsp)" << std::endl;
+					std::cout << "\tfstpl\t(%rsp)" << std::endl;
 				}
 				break;
 		}
@@ -400,15 +401,15 @@ void ProcedureCall(std::string procedureName) {
 				case CHAR:
 					if (exprType == DOUBLE) {
 						// Arrondir à l'entier le plus proche.
-						std::cout << "\tfldl (%rsp)" << std::endl;
-						std::cout << "\tfistpq (%rsp)" << std::endl;
+						std::cout << "\tfldl\t(%rsp)" << std::endl;
+						std::cout << "\tfistpq\t(%rsp)" << std::endl;
 					}
 					break;
 				case DOUBLE:
 					if (IsIntegral(exprType)) {
 						// Convertir d'entier à flottant 64 bits.
-						std::cout << "\tfild (%rsp)" << std::endl;
-						std::cout << "\tfstpl (%rsp)" << std::endl;
+						std::cout << "\tfild\t(%rsp)" << std::endl;
+						std::cout << "\tfstpl\t(%rsp)" << std::endl;
 					}
 					break;
 			}
@@ -420,8 +421,8 @@ void ProcedureCall(std::string procedureName) {
 	}
 	current = (TOKEN)lexer->yylex();
 
-	std::cout << "\tcall " << procedureName << std::endl;
-	std::cout << "\taddq $" << 8 * DeclaredSubroutines[procedureName].arguments.size() << ", %rsp" << std::endl;
+	std::cout << "\tcall\t" << procedureName << std::endl;
+	std::cout << "\taddq\t$" << 8 * DeclaredSubroutines[procedureName].arguments.size() << ", %rsp" << std::endl;
 }
 
 // Factor := "!" Factor | "(" Expression ")" | Identifier | Constant
@@ -435,15 +436,15 @@ TYPE Factor() {
 
 		TYPE factorType = Factor();
 
-		std::cout << "\tcmpq $0, (%rsp)" 				<< std::endl;
-		std::cout << "\tje Faux" << tag					<< std::endl;
-		std::cout << "\tmovq $FFFFFFFFFFFFFFFF, %rax" 	<< std::endl;
-		std::cout << "\tjmp Suite" << tag				<< std::endl;
-		std::cout << "Faux" << tag << ":" 				<< std::endl;
-		std::cout << "\tmovq $0, %rax" 					<< std::endl;
-		std::cout << "Suite" << tag << ":" 				<< std::endl;
-		std::cout << "\tnotq %rax" 						<< std::endl;
-		std::cout << "\tpush %rax" 						<< std::endl;
+		std::cout << "\tcmpq\t$0, (%rsp)" 			   << std::endl;
+		std::cout << "\tje\tFaux" << tag               << std::endl;
+		std::cout << "\tmovq\t$FFFFFFFFFFFFFFFF, %rax" << std::endl;
+		std::cout << "\tjmp\tSuite" << tag			   << std::endl;
+		std::cout << "Faux" << tag << ":" 			   << std::endl;
+		std::cout << "\tmovq\t$0, %rax"                << std::endl;
+		std::cout << "Suite" << tag << ":" 			   << std::endl;
+		std::cout << "\tnotq\t%rax" 	               << std::endl;
+		std::cout << "\tpushq\t%rax" 	               << std::endl;
 
 		returnType = BOOLEAN;
 
@@ -504,81 +505,81 @@ TYPE Term() {
 
 		// Opérande 2.
 		if (operandType == DOUBLE) {
-			std::cout << "\tfldl (%rsp)" << std::endl;
-			std::cout << "\taddq $8, %rsp" << std::endl;
+			std::cout << "\tfldl\t(%rsp)" << std::endl;
+			std::cout << "\taddq\t$8, %rsp" << std::endl;
 		} else {
 			if (FPU) {
-				std::cout << "\tfildl (%rsp)" << std::endl;
-				std::cout << "\taddq $8, %rsp" << std::endl;
+				std::cout << "\tfild\t (%rsp)" << std::endl;
+				std::cout << "\taddq\t$8, %rsp" << std::endl;
 			} else {
-				std::cout << "\tpop %rbx" << std::endl;
+				std::cout << "\tpopq\t%rbx" << std::endl;
 			}
 		}
 
 		// Opérande 1.
 		if (returnType == DOUBLE) {
-			std::cout << "\tfldl (%rsp)" << std::endl;
-			std::cout << "\taddq $8, %rsp" << std::endl;
+			std::cout << "\tfldl\t(%rsp)" << std::endl;
+			std::cout << "\taddq\t$8, %rsp" << std::endl;
 		} else {
 			if (FPU) {
-				std::cout << "\tfildl (%rsp)" << std::endl;
-				std::cout << "\taddq $8, %rsp" << std::endl;
+				std::cout << "\tfild\t (%rsp)" << std::endl;
+				std::cout << "\taddq\t$8, %rsp" << std::endl;
 			} else {
-				std::cout << "\tpop %rax" << std::endl;
+				std::cout << "\tpopq\t%rax" << std::endl;
 			}
 		}
 
 		unsigned long long tag = ++TagNumber;
 		switch(mulop) {
 			case AND:
-				std::cout << "\tcmpq $0, %rax" 					<< std::endl;
-				std::cout << "\tje Faux" << tag					<< std::endl;
-				std::cout << "\tmovq $FFFFFFFFFFFFFFFF, %rax" 	<< std::endl;
-				std::cout << "\tjmp Suite" << tag				<< std::endl;
+				std::cout << "\tcmpq\t$0, %rax" 					<< std::endl;
+				std::cout << "\tje\tFaux" << tag					<< std::endl;
+				std::cout << "\tmovq\t$FFFFFFFFFFFFFFFF, %rax" 	<< std::endl;
+				std::cout << "\tjmp\tSuite" << tag				<< std::endl;
 				std::cout << "Faux" << tag << ":" 				<< std::endl;
-				std::cout << "\tmovq $0, %rax" 					<< std::endl;
+				std::cout << "\tmovq\t$0, %rax" 					<< std::endl;
 				std::cout << "Suite" << tag << ":" 				<< std::endl;
 
 				tag = ++TagNumber;
-				std::cout << "\tcmpq $0, %rbx" 					<< std::endl;
-				std::cout << "\tje Faux" << tag					<< std::endl;
-				std::cout << "\tmovq $FFFFFFFFFFFFFFFF, %rbx" 	<< std::endl;
-				std::cout << "\tjmp Suite" << tag				<< std::endl;
+				std::cout << "\tcmpq\t$0, %rbx" 					<< std::endl;
+				std::cout << "\tje\tFaux" << tag					<< std::endl;
+				std::cout << "\tmovq\t$FFFFFFFFFFFFFFFF, %rbx" 	<< std::endl;
+				std::cout << "\tjmp\tSuite" << tag				<< std::endl;
 				std::cout << "Faux" << tag << ":" 				<< std::endl;
-				std::cout << "\tmovq $0, %rbx" 					<< std::endl;
+				std::cout << "\tmovq\t$0, %rbx" 					<< std::endl;
 				std::cout << "Suite" << tag << ":" 				<< std::endl;
 
-				std::cout << "\tandq %rbx, %rax" << std::endl;  // %rax and %rbx => %rax
-				std::cout << "\tpush %rax" << std::endl;
+				std::cout << "\tandq\t%rbx, %rax" << std::endl;  // %rax and %rbx => %rax
+				std::cout << "\tpushq\t%rax" << std::endl;
 				break;
 			case MUL:
 				if (FPU) {
-					std::cout << "\tfmulp %st(0), %st(1)" << std::endl;  // %st(0) * %st(1) => %st(1) puis pop
-					std::cout << "\tsubq $8, %rsp" << std::endl;
-					std::cout << "\tfstpl (%rsp)" << std::endl;
+					std::cout << "\tfmulp\t%st(0), %st(1)" << std::endl;  // %st(0) * %st(1) => %st(1) puis pop
+					std::cout << "\tsubq\t$8, %rsp" << std::endl;
+					std::cout << "\tfstpl\t(%rsp)" << std::endl;
 				} else {
-					std::cout << "\tmulq %rbx" << std::endl;  // %rbx * %rax => %rdx:%rax
-					std::cout << "\tpush %rax" << std::endl;
+					std::cout << "\tmulq\t%rbx" << std::endl;  // %rbx * %rax => %rdx:%rax
+					std::cout << "\tpushq\t%rax" << std::endl;
 				}
 				break;
 			case DIV:
 				if (FPU) {
-					std::cout << "\tfdivp %st(0), %st(1)" << std::endl;  // %st(0) / %st(1) => %st(1) puis pop
-					std::cout << "\tsubq $8, %rsp" << std::endl;
-					std::cout << "\tfstpl (%rsp)" << std::endl;
+					std::cout << "\tfdivp\t%st(0), %st(1)" << std::endl;  // %st(0) / %st(1) => %st(1) puis pop
+					std::cout << "\tsubq\t$8, %rsp" << std::endl;
+					std::cout << "\tfstpl\t(%rsp)" << std::endl;
 				} else {
-					std::cout << "\tmovq $0, %rdx" << std::endl;  // Partie haute du numérateur
-					std::cout << "\tdiv %rbx" << std::endl;  // %rdx:%rax / %rbx => q:%rax r:%rdx
-					std::cout << "\tpush %rax" << std::endl;
+					std::cout << "\tmovq\t$0, %rdx" << std::endl;  // Partie haute du numérateur
+					std::cout << "\tdiv\t%rbx" << std::endl;  // %rdx:%rax / %rbx => q:%rax r:%rdx
+					std::cout << "\tpushq\t%rax" << std::endl;
 				}
 				break;
 			case MOD:
 				if (!IsIntegral(returnType)) {
 					Error("(Term) Erreur: Le type de l'expression doit être entier! (" + typeString[returnType] + " lu)");
 				}
-				std::cout << "\tmovq $0, %rdx" << std::endl;  // Partie haute du numérateur
-				std::cout << "\tdiv %rbx" << std::endl;  // %rdx:%rax / %rbx => q:%rax r:%rdx
-				std::cout << "\tpush %rdx" << std::endl;
+				std::cout << "\tmovq\t$0, %rdx" << std::endl;  // Partie haute du numérateur
+				std::cout << "\tdiv\t%rbx" << std::endl;  // %rdx:%rax / %rbx => q:%rax r:%rdx
+				std::cout << "\tpushq\t%rdx" << std::endl;
 				break;
 			default:
 				Error("(Term) Erreur: Opérateur multiplicatif inconnu!");
@@ -635,74 +636,74 @@ TYPE SimpleExpression(){
 
 		// Opérande 2.
 		if (operandType == DOUBLE) {
-			std::cout << "\tfldl (%rsp)" << std::endl;
-			std::cout << "\taddq $8, %rsp" << std::endl;
+			std::cout << "\tfldl\t(%rsp)" << std::endl;
+			std::cout << "\taddq\t$8, %rsp" << std::endl;
 		} else {
 			if (FPU) {
-				std::cout << "\tfildl (%rsp)" << std::endl;
-				std::cout << "\taddq $8, %rsp" << std::endl;
+				std::cout << "\tfild\t (%rsp)" << std::endl;
+				std::cout << "\taddq\t$8, %rsp" << std::endl;
 			} else {
-				std::cout << "\tpop %rbx" << std::endl;
+				std::cout << "\tpopq\t%rbx" << std::endl;
 			}
 		}
 
 		// Opérande 1.
 		if (returnType == DOUBLE) {
-			std::cout << "\tfldl (%rsp)" << std::endl;
-			std::cout << "\taddq $8, %rsp" << std::endl;
+			std::cout << "\tfldl\t(%rsp)" << std::endl;
+			std::cout << "\taddq\t$8, %rsp" << std::endl;
 		} else {
 			if (FPU) {
-				std::cout << "\tfildl (%rsp)" << std::endl;
-				std::cout << "\taddq $8, %rsp" << std::endl;
+				std::cout << "\tfild\t (%rsp)" << std::endl;
+				std::cout << "\taddq\t$8, %rsp" << std::endl;
 			} else {
-				std::cout << "\tpop %rax" << std::endl;
+				std::cout << "\tpopq\t%rax" << std::endl;
 			}
 		}
 
 		unsigned long long tag = ++TagNumber;
 		switch(adop) {
 			case OR:
-				std::cout << "\tcmpq $0, %rax" 					<< std::endl;
-				std::cout << "\tje Faux" << tag					<< std::endl;
-				std::cout << "\tmovq $FFFFFFFFFFFFFFFF, %rax" 	<< std::endl;
-				std::cout << "\tjmp Suite" << tag				<< std::endl;
+				std::cout << "\tcmpq\t$0, %rax" 					<< std::endl;
+				std::cout << "\tje\tFaux" << tag					<< std::endl;
+				std::cout << "\tmovq\t$FFFFFFFFFFFFFFFF, %rax" 	<< std::endl;
+				std::cout << "\tjmp\tSuite" << tag				<< std::endl;
 				std::cout << "Faux" << tag << ":" 				<< std::endl;
-				std::cout << "\tmovq $0, %rax" 					<< std::endl;
+				std::cout << "\tmovq\t$0, %rax" 					<< std::endl;
 				std::cout << "Suite" << tag << ":" 				<< std::endl;
 
 				tag = ++TagNumber;
-				std::cout << "\tcmpq $0, %rbx" 					<< std::endl;
-				std::cout << "\tje Faux" << tag					<< std::endl;
-				std::cout << "\tmovq $FFFFFFFFFFFFFFFF, %rbx" 	<< std::endl;
-				std::cout << "\tjmp Suite" << tag				<< std::endl;
+				std::cout << "\tcmpq\t$0, %rbx" 					<< std::endl;
+				std::cout << "\tje\tFaux" << tag					<< std::endl;
+				std::cout << "\tmovq\t$FFFFFFFFFFFFFFFF, %rbx" 	<< std::endl;
+				std::cout << "\tjmp\tSuite" << tag				<< std::endl;
 				std::cout << "Faux" << tag << ":" 				<< std::endl;
-				std::cout << "\tmovq $0, %rbx" 					<< std::endl;
+				std::cout << "\tmovq\t$0, %rbx" 					<< std::endl;
 				std::cout << "Suite" << tag << ":" 				<< std::endl;
 
-				std::cout << "\torq %rbx, %rax" << std::endl;  // %rax or %rbx => %rax
-				std::cout << "\tpush %rax" << std::endl;
+				std::cout << "\torq\t%rbx, %rax" << std::endl;  // %rax or %rbx => %rax
+				std::cout << "\tpushq\t%rax" << std::endl;
 				break;
 			case ADD:
 				if (concat) {
 
 				}
 				if (FPU) {
-					std::cout << "\tfaddp %st(0), %st(1)" << std::endl;  // %st(0) + %st(1) => %st(1) puis pop
-					std::cout << "\tsubq $8, %rsp" << std::endl;
-					std::cout << "\tfstpl (%rsp)" << std::endl;
+					std::cout << "\tfaddp\t%st(0), %st(1)" << std::endl;  // %st(0) + %st(1) => %st(1) puis pop
+					std::cout << "\tsubq\t$8, %rsp" << std::endl;
+					std::cout << "\tfstpl\t(%rsp)" << std::endl;
 				} else {
-					std::cout << "\taddq %rbx, %rax" << std::endl;   // %rbx + %rax => %rax
-					std::cout << "\tpush %rax" << std::endl;
+					std::cout << "\taddq\t%rbx, %rax" << std::endl;   // %rbx + %rax => %rax
+					std::cout << "\tpushq\t%rax" << std::endl;
 				}
 				break;
 			case SUB:
 				if (FPU) {
-					std::cout << "\tfsubp %st(0), %st(1)" << std::endl;  // %st(0) - %st(1) => %st(1) puis pop
-					std::cout << "\tsubq $8, %rsp" << std::endl;
-					std::cout << "\tfstpl (%rsp)" << std::endl;
+					std::cout << "\tfsubp\t%st(0), %st(1)" << std::endl;  // %st(0) - %st(1) => %st(1) puis pop
+					std::cout << "\tsubq\t$8, %rsp" << std::endl;
+					std::cout << "\tfstpl\t(%rsp)" << std::endl;
 				} else {
-					std::cout << "\tsub %rbx, %rax" << std::endl;    // %rax - %rbx => %rax
-					std::cout << "\tpush %rax" << std::endl;
+					std::cout << "\tsubq\t%rbx, %rax" << std::endl;    // %rax - %rbx => %rax
+					std::cout << "\tpushq\t%rax" << std::endl;
 				}
 				break;
 			default:
@@ -764,63 +765,63 @@ TYPE Expression() {
 
 		// Opérande 2.
 		if (operandType == DOUBLE) {
-			std::cout << "\tfldl (%rsp)" << std::endl;
-			std::cout << "\taddq $8, %rsp" << std::endl;
+			std::cout << "\tfldl\t(%rsp)" << std::endl;
+			std::cout << "\taddq\t$8, %rsp" << std::endl;
 		} else {
 			if (FPU) {
-				std::cout << "\tfildl (%rsp)" << std::endl;
-				std::cout << "\taddq $8, %rsp" << std::endl;
+				std::cout << "\tfild\t (%rsp)" << std::endl;
+				std::cout << "\taddq\t$8, %rsp" << std::endl;
 			} else {
-				std::cout << "\tpop %rax" << std::endl;
+				std::cout << "\tpopq\t%rax" << std::endl;
 			}
 		}
 
 		// Opérande 1.
 		if (returnType == DOUBLE) {
-			std::cout << "\tfldl (%rsp)" << std::endl;
-			std::cout << "\taddq $8, %rsp" << std::endl;
+			std::cout << "\tfldl\t(%rsp)" << std::endl;
+			std::cout << "\taddq\t$8, %rsp" << std::endl;
 		} else {
 			if (FPU) {
-				std::cout << "\tfildl (%rsp)" << std::endl;
-				std::cout << "\taddq $8, %rsp" << std::endl;
+				std::cout << "\tfild\t (%rsp)" << std::endl;
+				std::cout << "\taddq\t$8, %rsp" << std::endl;
 			} else {
-				std::cout << "\tpop %rbx" << std::endl;
+				std::cout << "\tpopq\t%rbx" << std::endl;
 			}
 		}
 
 		if (FPU) {
-			std::cout << "\tfcomi %st(1)" << std::endl;
+			std::cout << "\tfcomi\t%st(1)" << std::endl;
 		} else {
-			std::cout << "\tcmpq %rax, %rbx" << std::endl;
+			std::cout << "\tcmpq\t%rax, %rbx" << std::endl;
 		}
 
 		switch (oprel) {
 			case EQU:
-				std::cout << "\tje Vrai" << tag << "\t# If equal" << std::endl;
+				std::cout << "\tje\tVrai" << tag << "\t# If equal" << std::endl;
 				break;
 			case DIFF:
-				std::cout << "\tjne Vrai" << tag << "\t# If not equal" << std::endl;
+				std::cout << "\tjne\tVrai" << tag << "\t# If not equal" << std::endl;
 				break;
 			case SUPE:
-				std::cout << "\tjae Vrai" << tag << "\t# If above or equal" << std::endl;
+				std::cout << "\tjae\tVrai" << tag << "\t# If above or equal" << std::endl;
 				break;
 			case INFE:
-				std::cout << "\tjbe Vrai" << tag << "\t# If below or equal" << std::endl;
+				std::cout << "\tjbe\tVrai" << tag << "\t# If below or equal" << std::endl;
 				break;
 			case INF:
-				std::cout << "\tjb Vrai" << tag << "\t# If below" << std::endl;
+				std::cout << "\tjb\tVrai" << tag << "\t# If below" << std::endl;
 				break;
 			case SUP:
-				std::cout << "\tja Vrai" << tag << "\t# If above" << std::endl;
+				std::cout << "\tja\tVrai" << tag << "\t# If above" << std::endl;
 				break;
 			default:
 				Error("(Expression) Erreur: Opérateur de comparaison inconnu!");
 		}
 
-		std::cout << "\tpush $0\t# False" << std::endl;
-		std::cout << "\tjmp Suite" << tag << std::endl;
+		std::cout << "\tpushq\t$0\t# False" << std::endl;
+		std::cout << "\tjmp\tSuite" << tag << std::endl;
 		std::cout << "Vrai" << tag << ":" << std::endl;
-		std::cout << "\tpush $0xFFFFFFFFFFFFFFFF\t# True" << std::endl;	
+		std::cout << "\tpushq\t$0xFFFFFFFFFFFFFFFF\t# True" << std::endl;	
 		std::cout << "Suite" << tag << ":" << std::endl;
 
 		return BOOLEAN;
@@ -868,7 +869,7 @@ void AssignmentStatement() {
 		if (currentSubroutine == id && DeclaredSubroutines[currentSubroutine].returnType != WTFT) {
 			// Cas spécial: assignement de la valeur de retour d'une fonction (pas de procédures donc).
 			found = true;
-			output = "\tpop %rax";
+			output = "\tpopq\t%rax";
 			type = DeclaredSubroutines[currentSubroutine].returnType;
 		} else {
 			// Paramètres.
@@ -876,7 +877,7 @@ void AssignmentStatement() {
 			for (int i = 0; i < argumentsVector.size(); i++) {
 				if (argumentsVector[i].name == id) {
 					found = true;
-					output = "\tpop " + std::to_string(16 + 8 *i) + "(%rbp)";
+					output = "\tpopq\t" + std::to_string(16 + 8 *i) + "(%rbp)";
 					type = DeclaredSubroutines[currentSubroutine].returnType;
 				}
 			}
@@ -885,7 +886,7 @@ void AssignmentStatement() {
 			for (int i = 0; i < localVector.size(); i++) {
 				if (localVector[i].name == id) {
 					found = true;
-					output = "\tpop " + std::to_string(-8 - 8 * i) + "(%rbp)";
+					output = "\tpopq\t" + std::to_string(-8 - 8 * i) + "(%rbp)";
 					type = localVector[i].type;
 				}
 			}
@@ -897,7 +898,7 @@ void AssignmentStatement() {
 			Error("(AssignmentStatement) Erreur: Variable `" + id + "` non déclarée!");
 		}
 		type = DeclaredVariables.find({id})->type;
-		output = "\tpop " + id;
+		output = "\tpopq\t" + id;
 	}
 
 	if (current != ASSIGN) {
@@ -912,15 +913,15 @@ void AssignmentStatement() {
 		case CHAR:
 			if (exprType == DOUBLE) {
 				// Arrondir à l'entier le plus proche.
-				std::cout << "\tfldl (%rsp)" << std::endl;
-				std::cout << "\tfistpq (%rsp)" << std::endl;
+				std::cout << "\tfldl\t(%rsp)" << std::endl;
+				std::cout << "\tfistpq\t(%rsp)" << std::endl;
 			}
 			break;
 		case DOUBLE:
 			if (IsIntegral(exprType)) {
 				// Convertir d'entier à flottant 64 bits.
-				std::cout << "\tfild (%rsp)" << std::endl;
-				std::cout << "\tfstpl (%rsp)" << std::endl;
+				std::cout << "\tfild\t(%rsp)" << std::endl;
+				std::cout << "\tfstpl\t(%rsp)" << std::endl;
 			}
 		case STRING:
 			if (exprType != STRING) {
@@ -945,15 +946,15 @@ void IfStatement() {
 		Error("(IfStatement) Erreur: Type booléen attendu ! (" + typeString[exprType] + " lu)");
 	}
 
-	std::cout << "\tpop %rax" << std::endl;  // %rax contient le résultat
-	std::cout << "\tcmpq $0, %rax" << std::endl;
-	std::cout << "\tje Else" << tag << std::endl;
+	std::cout << "\tpopq\t%rax" << std::endl;  // %rax contient le résultat
+	std::cout << "\tcmpq\t$0, %rax" << std::endl;
+	std::cout << "\tje\tElse" << tag << std::endl;
 
 	ReadKeyword("THEN");
 
 	Statement();  // reconnaître Statement
 
-	std::cout << "\tjmp EndIf" << tag << std::endl;
+	std::cout << "\tjmp\tEndIf" << tag << std::endl;
 
 	// ELSE optionnel (=> pas d'erreur)
 	std::cout << "Else" << tag << ":" << std::endl;
@@ -978,15 +979,15 @@ void WhileStatement() {
 		Error("(WhileStatement) Erreur: Expression booléenne attendue ! (" + typeString[exprType] + " lue)");
 	}
 
-	std::cout << "\tpop %rax" << std::endl;
-	std::cout << "\tcmpq $0, %rax" << std::endl;
-	std::cout << "\tje EndWhile" << tag << std::endl;
+	std::cout << "\tpopq\t%rax" << std::endl;
+	std::cout << "\tcmpq\t$0, %rax" << std::endl;
+	std::cout << "\tje\tEndWhile" << tag << std::endl;
 
 	ReadKeyword("DO");
 
 	Statement();
 
-	std::cout << "\tjmp TestWhile" << tag << std::endl;
+	std::cout << "\tjmp\tTestWhile" << tag << std::endl;
 	std::cout << "EndWhile" << tag << ":" << std::endl;
 }
 
@@ -1007,9 +1008,9 @@ void RepeatStatement() {
 		Error("(RepeatStatement) Erreur: Expression booléenne attendue ! (" + typeString[exprType] + " lue)");
 	}
 
-	std::cout << "\tpop %rax" << std::endl;
-	std::cout << "\tcmpq $0, %rax" << std::endl;
-	std::cout << "\tjne Repeat" << tag << std::endl;
+	std::cout << "\tpopq\t%rax" << std::endl;
+	std::cout << "\tcmpq\t$0, %rax" << std::endl;
+	std::cout << "\tjne\tRepeat" << tag << std::endl;
 }
 
 // ForStatement := "FOR" AssignmentStatement ("TO" | "DOWNTO") Expression "DO" Statement
@@ -1058,11 +1059,11 @@ void ForStatement() {
 	std::string jump;
 	std::string increment;
 	if (strcmp("TO", lexer->YYText()) == 0) {
-		jump = "\tja EndFor";
-		increment = "\taddq $1, ";
+		jump = "\tja\tEndFor";
+		increment = "\taddq\t$1, ";
 	} else {
-		jump = "\tjb EndFor";
-		increment = "\tsubq $1, ";
+		jump = "\tjb\tEndFor";
+		increment = "\tsubq\t$1, ";
 	}
 	current = (TOKEN)lexer->yylex();
 
@@ -1073,8 +1074,8 @@ void ForStatement() {
 		Error("(ForStatement) Erreur: L'incrément doit être entier!");
 	}
 
-	std::cout << "\tpop %rax" << std::endl;  // %rax contient le résultat
-	std::cout << "\tcmpq %rax, " << position << std::endl;
+	std::cout << "\tpopq\t%rax" << std::endl;  // %rax contient le résultat
+	std::cout << "\tcmpq\t%rax, " << position << std::endl;
 	std::cout << jump << tag << std::endl;
 	
 	ReadKeyword("DO");
@@ -1082,7 +1083,7 @@ void ForStatement() {
 	Statement();  // reconnaître Statement
 
 	std::cout << increment << position << std::endl;  // incrémenter l'entier
-	std::cout << "\tjmp TestFor" << tag << std::endl;
+	std::cout << "\tjmp\tTestFor" << tag << std::endl;
 	std::cout << "EndFor" << tag << ":" << std::endl;
 }
 
@@ -1096,62 +1097,144 @@ void DisplayStatement() {
 		case UINTEGER:
 			if (!FS["LLU"]) {
 				FS["LLU"] = true;
-				internalData << "FSLLU:\n\t.string \"%llu\\n\"" << std::endl;
+				internalData << "FSLLU:\n\t.string \"%llu\"" << std::endl;
 			}
-			std::cout << "\tpop %rdx"                    << std::endl;
-			std::cout << "\tmovq $FSLLU, %rsi"           << std::endl;
-			std::cout << "\tmovl $0, %eax"               << std::endl;
-			std::cout << "\tmovl $1, %edi"               << std::endl;
-			std::cout << "\tcall __printf_chk@PLT"       << std::endl;
+			std::cout << "\tpopq\t%rdx"             << std::endl;
+			std::cout << "\tmovq\t$FSLLU, %rsi"     << std::endl;
+			std::cout << "\tmovl\t$0, %eax"         << std::endl;
+			std::cout << "\tmovl\t$1, %edi"         << std::endl;
+			std::cout << "\tcall\t__printf_chk@PLT" << std::endl;
 			break;
 		case BOOLEAN: {
 			if (!FS["B"]) {
 				FS["B"] = true;
-				internalData << "FSTRUE:\n\t.string \"TRUE\\n\"" << std::endl;
-				internalData << "FSFALSE:\n\t.string \"FALSE\\n\"" << std::endl;
+				internalData << "FSTRUE:\n\t.string \"TRUE\"" << std::endl;
+				internalData << "FSFALSE:\n\t.string \"FALSE\"" << std::endl;
 			}
 			unsigned long long tag = ++TagNumber;
-			std::cout << "\tpop %rdx"                << std::endl;
-			std::cout << "\tcmpq $0, %rdx"           << std::endl;
-			std::cout << "\tje False" << tag         << std::endl;
-			std::cout << "\tmovq $FSTRUE, %rsi"      << std::endl;
-			std::cout << "\tjmp Suite" << tag        << std::endl;
-			std::cout << "False" << tag << ":"       << std::endl;
-			std::cout << "\tmovq $FSFALSE, %rsi"     << std::endl;
-			std::cout << "Suite" << tag << ":"       << std::endl;
-			std::cout << "\tmovl $0, %eax"           << std::endl;
-			std::cout << "\tmovl $1, %edi"           << std::endl;
-			std::cout << "\tcall __printf_chk@PLT"   << std::endl;
+			std::cout << "\tpopq\t%rdx"             << std::endl;
+			std::cout << "\tcmpq\t$0, %rdx"         << std::endl;
+			std::cout << "\tje\tFalse" << tag       << std::endl;
+			std::cout << "\tmovq\t$FSTRUE, %rsi"    << std::endl;
+			std::cout << "\tjmp\tSuite" << tag      << std::endl;
+			std::cout << "False" << tag << ":"      << std::endl;
+			std::cout << "\tmovq\t$FSFALSE, %rsi"   << std::endl;
+			std::cout << "Suite" << tag << ":"      << std::endl;
+			std::cout << "\tmovl\t$0, %eax"         << std::endl;
+			std::cout << "\tmovl\t$1, %edi"         << std::endl;
+			std::cout << "\tcall\t__printf_chk@PLT" << std::endl;
 			break;
 		}
 		case DOUBLE:
 			if (!FS["F"]) {
 				FS["F"] = true;
-				internalData << "FSF:\n\t.string \"%lf\\n\"" << std::endl;
+				internalData << "FSF:\n\t.string \"%lf\"" << std::endl;
 			}
-			std::cout << "\tmovsd (%rsp), %xmm0"       << std::endl;
-			std::cout << "\tmovq $FSF, %rsi"           << std::endl;
-			std::cout << "\tmovl $1, %eax"             << std::endl;
-			std::cout << "\tmovl $1, %edi"             << std::endl;
-			std::cout << "\tcall __printf_chk@PLT"     << std::endl;
-			std::cout << "\taddq $8, %rsp"             << std::endl;
+			std::cout << "\tmovsd\t(%rsp), %xmm0"   << std::endl;
+			std::cout << "\tmovq\t$FSF, %rsi"       << std::endl;
+			std::cout << "\tmovl\t$1, %eax"         << std::endl;
+			std::cout << "\tmovl\t$1, %edi"         << std::endl;
+			std::cout << "\tcall\t__printf_chk@PLT" << std::endl;
+			std::cout << "\taddq\t$8, %rsp"         << std::endl;
 			break;
 		case CHAR:
 			if (!FS["C"]) {
 				FS["C"] = true;
-				internalData << "FSC:\n\t.string \"%c\\n\"" << std::endl;
+				internalData << "FSC:\n\t.string \"%c\"" << std::endl;
 			}
-			std::cout << "\tpop %rdx"                  << std::endl;
-			std::cout << "\tmovq $FSC, %rsi"           << std::endl;
-			std::cout << "\tmovl $0, %eax"             << std::endl;
-			std::cout << "\tmovl $1, %edi"             << std::endl;
-			std::cout << "\tcall __printf_chk@PLT"     << std::endl;
+			std::cout << "\tpopq\t%rdx"             << std::endl;
+			std::cout << "\tmovq\t$FSC, %rsi"       << std::endl;
+			std::cout << "\tmovl\t$0, %eax"         << std::endl;
+			std::cout << "\tmovl\t$1, %edi"         << std::endl;
+			std::cout << "\tcall\t__printf_chk@PLT" << std::endl;
 			break;
 		case STRING:
-			std::cout << "\tpop %rsi"                  << std::endl;
-			std::cout << "\tmovl $0, %eax"             << std::endl;
-			std::cout << "\tmovl $1, %edi"             << std::endl;
-			std::cout << "\tcall __printf_chk@PLT"     << std::endl;
+			if (!FS["S"]) {
+				FS["S"] = true;
+				internalData << "FSS:\n\t.string \"%s\"" << std::endl;
+			}
+			std::cout << "\tpopq\t%rdx"             << std::endl;
+			std::cout << "\tmovq\t$FSS, %rsi"       << std::endl;
+			std::cout << "\tmovl\t$0, %eax"         << std::endl;
+			std::cout << "\tmovl\t$1, %edi"         << std::endl;
+			std::cout << "\tcall\t__printf_chk@PLT" << std::endl;
+			break;
+		default:
+			Error("(DisplayStatement) Erreur: Type inconnu!");
+	}
+}
+
+// DisplaylnStatement := "DISPLAYLN" Expression
+void DisplaylnStatement() {
+	ReadKeyword("DISPLAYLN");
+
+	TYPE exprType = Expression();  // reconnaître Expression
+
+	switch (exprType) {
+		case UINTEGER:
+			if (!FS["LLUln"]) {
+				FS["LLUln"] = true;
+				internalData << "FSLLUln:\n\t.string \"%llu\\n\"" << std::endl;
+			}
+			std::cout << "\tpopq\t%rdx"             << std::endl;
+			std::cout << "\tmovq\t$FSLLUln, %rsi"   << std::endl;
+			std::cout << "\tmovl\t$0, %eax"         << std::endl;
+			std::cout << "\tmovl\t$1, %edi"         << std::endl;
+			std::cout << "\tcall\t__printf_chk@PLT" << std::endl;
+			break;
+		case BOOLEAN: {
+			if (!FS["Bln"]) {
+				FS["Bln"] = true;
+				internalData << "FSTRUEln:\n\t.string \"TRUE\\n\"" << std::endl;
+				internalData << "FSFALSEln:\n\t.string \"FALSE\\n\"" << std::endl;
+			}
+			unsigned long long tag = ++TagNumber;
+			std::cout << "\tpopq\t%rdx"             << std::endl;
+			std::cout << "\tcmpq\t$0, %rdx"         << std::endl;
+			std::cout << "\tje\tFalse" << tag       << std::endl;
+			std::cout << "\tmovq\t$FSTRUEln, %rsi"  << std::endl;
+			std::cout << "\tjmp\tSuite" << tag      << std::endl;
+			std::cout << "False" << tag << ":"      << std::endl;
+			std::cout << "\tmovq\t$FSFALSEln, %rsi" << std::endl;
+			std::cout << "Suite" << tag << ":"      << std::endl;
+			std::cout << "\tmovl\t$0, %eax"         << std::endl;
+			std::cout << "\tmovl\t$1, %edi"         << std::endl;
+			std::cout << "\tcall\t__printf_chk@PLT" << std::endl;
+			break;
+		}
+		case DOUBLE:
+			if (!FS["Fln"]) {
+				FS["Fln"] = true;
+				internalData << "FSFln:\n\t.string \"%lf\\n\"" << std::endl;
+			}
+			std::cout << "\tmovsd\t(%rsp), %xmm0"   << std::endl;
+			std::cout << "\tmovq\t$FSFln, %rsi"     << std::endl;
+			std::cout << "\tmovl\t$1, %eax"         << std::endl;
+			std::cout << "\tmovl\t$1, %edi"         << std::endl;
+			std::cout << "\tcall\t__printf_chk@PLT" << std::endl;
+			std::cout << "\taddq\t$8, %rsp"         << std::endl;
+			break;
+		case CHAR:
+			if (!FS["Cln"]) {
+				FS["Cln"] = true;
+				internalData << "FSCln:\n\t.string \"%c\\n\"" << std::endl;
+			}
+			std::cout << "\tpopq\t%rdx"             << std::endl;
+			std::cout << "\tmovq\t$FSCln, %rsi"     << std::endl;
+			std::cout << "\tmovl\t$0, %eax"         << std::endl;
+			std::cout << "\tmovl\t$1, %edi"         << std::endl;
+			std::cout << "\tcall\t__printf_chk@PLT" << std::endl;
+			break;
+		case STRING:
+			if (!FS["Sln"]) {
+				FS["Sln"] = true;
+				internalData << "FSSln:\n\t.string \"%s\\n\"" << std::endl;
+			}
+			std::cout << "\tpopq\t%rdx"             << std::endl;
+			std::cout << "\tmovq\t$FSSln, %rsi"     << std::endl;
+			std::cout << "\tmovl\t$0, %eax"         << std::endl;
+			std::cout << "\tmovl\t$1, %edi"         << std::endl;
+			std::cout << "\tcall\t__printf_chk@PLT" << std::endl;
 			break;
 		default:
 			Error("(DisplayStatement) Erreur: Type inconnu!");
@@ -1168,9 +1251,9 @@ TYPE CaseLabelList() {
 		Error("(CaseLabelList) Erreur: Constante ne peut pas être string!");
 	}
 
-	std::cout << "\tpop %rax" << std::endl;
-	std::cout << "\tcmpq (%rsp), %rax" << std::endl;
-	std::cout << "\tje Statement" << tag << std::endl;
+	std::cout << "\tpopq\t%rax" << std::endl;
+	std::cout << "\tcmpq\t(%rsp), %rax" << std::endl;
+	std::cout << "\tje\tStatement" << tag << std::endl;
 
 	while (current == COMMA) {
 		current = (TOKEN)lexer->yylex();  // reconnaître ","
@@ -1180,9 +1263,9 @@ TYPE CaseLabelList() {
 			Error("(CaseLabelList) Erreur: Les constantes doivent avoir le même type! (" + typeString[constType] + " lu)");
 		}
 
-		std::cout << "\tpop %rax" << std::endl;
-		std::cout << "\tcmpq (%rsp), %rax" << std::endl;
-		std::cout << "\tje Statement" << tag << std::endl;
+		std::cout << "\tpopq\t%rax" << std::endl;
+		std::cout << "\tcmpq\t(%rsp), %rax" << std::endl;
+		std::cout << "\tje\tStatement" << tag << std::endl;
 	}
 
 	return returnType;
@@ -1201,12 +1284,12 @@ TYPE CaseElement(unsigned long long endTagNumber) {
 
 	current = (TOKEN)lexer->yylex();  // reconnaître ":"
 
-	std::cout << "\tjmp Case" << tag + 1 << std::endl;
+	std::cout << "\tjmp\tCase" << tag + 1 << std::endl;
 	std::cout << "Statement" << tag << ":" << std::endl;
 
 	Statement();  // reconnaître Statement
 
-	std::cout << "\tjmp EndCase" << endTagNumber << std::endl;
+	std::cout << "\tjmp\tEndCase" << endTagNumber << std::endl;
 
 	// Cette étiquette doit correspondre avec le jump juste au dessus.
 	std::cout << "Case" << tag + 1 << ":" << std::endl;
@@ -1255,10 +1338,10 @@ void CaseStatement() {
 	ReadKeyword("END");
 
 	std::cout << "EndCase" << tag << ":" << std::endl;
-	std::cout << "\taddq $8, %rsp" << std::endl;
+	std::cout << "\taddq\t$8, %rsp" << std::endl;
 }
 
-// Statement := AssignmentStatement | IfStatement | WhileStatement | RepeatStatement | ForStatement | BlockStatement | DisplayStatement | CaseStatement
+// Statement := AssignmentStatement | IfStatement | WhileStatement | RepeatStatement | ForStatement | BlockStatement | DisplayStatement | DisplaylnStatement | CaseStatement
 void Statement() {
 	if (current == ID) {
 		AssignmentStatement();
@@ -1275,6 +1358,8 @@ void Statement() {
 			BlockStatement();
 		} else if (strcmp("DISPLAY", lexer->YYText()) == 0) {
 			DisplayStatement();
+		} else if (strcmp("DISPLAYLN", lexer->YYText()) == 0) {
+			DisplaylnStatement();
 		} else if (strcmp("CASE", lexer->YYText()) == 0) {
 			CaseStatement();
 		} else {
@@ -1535,13 +1620,13 @@ void Function() {
 		}
 
 		std::cout << functionName << ":" << std::endl;
-		std::cout << "\tpush %rbp" << std::endl;
-		std::cout << "\tmovq %rsp, %rbp" << std::endl;
+		std::cout << "\tpushq\t%rbp" << std::endl;
+		std::cout << "\tmovq\t%rsp, %rbp" << std::endl;
 
 		unsigned long long size = DeclaredSubroutines[functionName].local.size();
 		if (size > 0) {
 			size *= 8;
-			std::cout << "\tsubq $" << size << ", %rsp" << std::endl;
+			std::cout << "\tsubq\t$" << size << ", %rsp" << std::endl;
 		}
 
 		is_subroutine = true;
@@ -1552,8 +1637,10 @@ void Function() {
 
 		DeclaredSubroutines[functionName].defined = true;
 
-		std::cout << "\taddq $" << DeclaredSubroutines[functionName].local.size() * 8 << ", %rsp" << std::endl;
-		std::cout << "\tpop %rbp" << std::endl;
+		if (DeclaredSubroutines[functionName].local.size() != 0) {
+			std::cout << "\taddq\t$" << DeclaredSubroutines[functionName].local.size() * 8 << ", %rsp" << std::endl;
+		}
+		std::cout << "\tpopq\t%rbp" << std::endl;
 		std::cout << "\tret" << std::endl;
 	}
 }
@@ -1620,13 +1707,13 @@ void Procedure() {
 		}
 
 		std::cout << procedureName << ":" << std::endl;
-		std::cout << "\tpush %rbp" << std::endl;
-		std::cout << "\tmovq %rsp, %rbp" << std::endl;
+		std::cout << "\tpushq\t%rbp" << std::endl;
+		std::cout << "\tmovq\t%rsp, %rbp" << std::endl;
 
 		unsigned long long size = DeclaredSubroutines[procedureName].local.size();
 		if (size > 0) {
 			size *= 8;
-			std::cout << "\tsubq $" << size << ", %rsp" << std::endl;
+			std::cout << "\tsubq\t$" << size << ", %rsp" << std::endl;
 		}
 
 		is_subroutine = true;
@@ -1637,8 +1724,8 @@ void Procedure() {
 
 		DeclaredSubroutines[procedureName].defined = true;
 
-		std::cout << "\taddq $" << DeclaredSubroutines[procedureName].local.size() * 8 << ", %rsp" << std::endl;
-		std::cout << "\tpop %rbp" << std::endl;
+		std::cout << "\taddq\t$" << DeclaredSubroutines[procedureName].local.size() * 8 << ", %rsp" << std::endl;
+		std::cout << "\tpopq\t%rbp" << std::endl;
 		std::cout << "\tret" << std::endl;
 	}
 }
@@ -1698,7 +1785,7 @@ void Program() {
 	std::cout << "\t.globl main"     << std::endl;
 	// std::cout << "\t.align 8"     << std::endl;
 	std::cout << "main:"             << std::endl;
-	std::cout << "\tmovq %rsp, %rbp" << std::endl;
+	std::cout << "\tmovq\t%rsp, %rbp" << std::endl;
 
 	BlockStatement();
 
@@ -1708,8 +1795,8 @@ void Program() {
 	current = (TOKEN)lexer->yylex();
 
 	// Trailer for the gcc assembler / linker.
-	std::cout << "\tmovq $0, %rax" << std::endl;  // valeur de retour de main égale à 0.
-	std::cout << "\tmovq %rbp, %rsp" << std::endl;
+	std::cout << "\tmovq\t$0, %rax" << std::endl;  // valeur de retour de main égale à 0.
+	std::cout << "\tmovq\t%rbp, %rsp" << std::endl;
 	std::cout << "\tret" << std::endl;
 
 	if (!internalData.str().empty()) {
@@ -1751,7 +1838,7 @@ Ex: les RECORDs (structures, types définis par l'utilisateur).
 // À IMPLÉMENTER
 /*
 -? DeclaredVariables as a map
-- stringconst  TODO concat ctrl+f TODO
+- stringconst - concat (string & char)
 - cast explicite
 - return statement has to be last ? store value maybe ?
 
@@ -1795,10 +1882,11 @@ Ex: les RECORDs (structures, types définis par l'utilisateur).
 // RepeatStatement := "REPEAT" Statement "UNTIL" Expression
 // ForStatement := "FOR" AssignmentStatement ("TO" | "DOWNTO") Expression "DO" Statement
 // DisplayStatement := "DISPLAY" Expression
+// DisplaylnStatement := "DISPLAYLN" Expression
 // CaseLabelList := Constant {"," Constant}
 // CaseElement := CaseLabelList ":" Statement
 // CaseStatement := "CASE" Expression "OF" CaseElement {";" CaseElement} [";" "ELSE" Statement] "END"
-// Statement := AssignmentStatement | IfStatement | WhileStatement | RepeatStatement | ForStatement | BlockStatement | DisplayStatement | CaseStatement
+// Statement := AssignmentStatement | IfStatement | WhileStatement | RepeatStatement | ForStatement | BlockStatement | DisplayStatement | DisplaylnStatement | CaseStatement
 //
 // VarDeclaration := Identifier {"," Identifier} ":" Type
 // VarSection := "VAR" VarDeclaration {";" VarDeclaration}
@@ -1877,6 +1965,8 @@ main:
 Instructions SSE découvertes et c'est franchement pas mal!
 On différencie char et string par simple et double quotes.
 Les format strings ont un \n à la fin car l'instruction DISPLAY sert à afficher une valeur en particulier, donc sur sa propre ligne.
+Les variables globales sont automatiquement initialisées à 0.
+On ne peut pas avoir de strings vides.
 */
 
 // TESTS
