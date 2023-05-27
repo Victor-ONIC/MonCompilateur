@@ -304,12 +304,12 @@ TYPE FunctionCall(std::string functionName) {
 	}
 	current = (TOKEN)lexer->yylex();
 
+	unsigned long long count = 0;
 	if (current != RPARENT) {
-		unsigned long long i = 0;
 		TYPE exprType;
 		
 		exprType = Expression();
-		switch (DeclaredSubroutines[functionName].arguments[i++].type) {
+		switch (DeclaredSubroutines[functionName].arguments[count++].type) {
 			case UINTEGER:
 			case BOOLEAN:
 			case CHAR:
@@ -327,10 +327,14 @@ TYPE FunctionCall(std::string functionName) {
 				}
 				break;
 		}
+		if (count > DeclaredSubroutines[functionName].arguments.size()) {
+			Error("(FunctionCall) Erreur: Trop d'arguments dans l'appel de `" + functionName + "`!");
+		}
+
 		while (current == COMMA) {
 			current = (TOKEN)lexer->yylex();
 			exprType = Expression();
-			switch (DeclaredSubroutines[functionName].arguments[i++].type) {
+			switch (DeclaredSubroutines[functionName].arguments[count++].type) {
 				case UINTEGER:
 				case BOOLEAN:
 				case CHAR:
@@ -348,7 +352,13 @@ TYPE FunctionCall(std::string functionName) {
 					}
 					break;
 			}
+			if (count > DeclaredSubroutines[functionName].arguments.size()) {
+				Error("(FunctionCall) Erreur: Trop d'arguments dans l'appel de `" + functionName + "`!");
+			}
 		}
+	}
+	if (count < DeclaredSubroutines[functionName].arguments.size()) {
+		Error("(FunctionCall) Erreur: Trop peu d'arguments dans l'appel de `" + functionName + "`!");
 	}
 
 	if (current != RPARENT) {
@@ -369,12 +379,12 @@ void ProcedureCall(std::string procedureName) {
 	}
 	current = (TOKEN)lexer->yylex();
 
+	unsigned long long count = 0;
 	if (current != RPARENT) {
-		unsigned long long i = 0;
 		TYPE exprType;
 		
 		exprType = Expression();
-		switch (DeclaredSubroutines[procedureName].arguments[i++].type) {
+		switch (DeclaredSubroutines[procedureName].arguments[count++].type) {
 			case UINTEGER:
 			case BOOLEAN:
 			case CHAR:
@@ -392,10 +402,14 @@ void ProcedureCall(std::string procedureName) {
 				}
 				break;
 		}
+		if (count > DeclaredSubroutines[procedureName].arguments.size()) {
+			Error("(ProcedureCall) Erreur: Trop d'arguments dans l'appel de `" + procedureName + "`!");
+		}
+
 		while (current == COMMA) {
 			current = (TOKEN)lexer->yylex();
 			exprType = Expression();
-			switch (DeclaredSubroutines[procedureName].arguments[i++].type) {
+			switch (DeclaredSubroutines[procedureName].arguments[count++].type) {
 				case UINTEGER:
 				case BOOLEAN:
 				case CHAR:
@@ -413,7 +427,13 @@ void ProcedureCall(std::string procedureName) {
 					}
 					break;
 			}
+			if (count > DeclaredSubroutines[procedureName].arguments.size()) {
+				Error("(ProcedureCall) Erreur: Trop d'arguments dans l'appel de `" + procedureName + "`!");
+			}
 		}
+	}
+	if (count < DeclaredSubroutines[procedureName].arguments.size()) {
+		Error("(ProcedureCall) Erreur: Trop peu d'arguments dans l'appel de `" + procedureName + "`!");
 	}
 
 	if (current != RPARENT) {
@@ -481,7 +501,7 @@ OPMUL MultiplicativeOperator() {
 	} else {
 		opmul = WTFM;
 	}
-	current = (TOKEN)lexer->yylex();  // reconnaître l'opérateur
+	current = (TOKEN)lexer->yylex();
 	return opmul;
 }
 
@@ -849,7 +869,7 @@ void AssignmentStatement() {
 	std::string id = lexer->YYText();
 	current = (TOKEN)lexer->yylex();
 
-	// Appel de routine comme instruction.
+	// Appel de routine comme instruction après avoir lu un identifiant.
 	if (current == LPARENT) {
 		if (!IsSubroutineDeclared(id)) {
 			Error("(AssignmentStatement) Erreur: Routine non déclarée!");

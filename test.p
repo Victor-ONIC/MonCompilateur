@@ -1,9 +1,11 @@
 PROGRAM addition;
 
-VAR
-    s : STRING.
+PROCEDURE func(a, b : UINTEGER)
+BEGIN
+    DISPLAYLN a;
+    DISPLAYLN b
+END.
 
 BEGIN
-    s := "salut";
-    DISPLAYLN s
+    func(1, 9999)
 END.
