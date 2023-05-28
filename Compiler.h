@@ -15,11 +15,6 @@
 
 class Compiler {
 private:
-    // typedefs ?
-    // unsigned long long ---> llu
-    // const std::vector<Compiler::Variable>& ---> arg_list_t
-    // const std::vector<Compiler::Variable>& ---> local_list_t
-
     yyFlexLexer* lexer;
     Token current_token;
     unsigned long long tag_number;
@@ -32,13 +27,11 @@ private:
     std::string current_subroutine;
 
     Variable& variable(const std::string& var_name);
-    const Variable& variable(const std::string& var_name) const; // used?
+    const Variable& variable(const std::string& var_name) const;
     Subroutine& subroutine(const std::string& subroutine_name);
     const Subroutine& subroutine(const std::string& subroutine_name) const;
 
     void error(const std::string& message) const;
-    // void write(const std::string& line) const;
-    // const std::string current_text() const;
     void read();
     void read_keyword(const std::string& keyword);
 
@@ -80,8 +73,8 @@ private:
     void CaseStatement();
     void Statement();
 
-    void VarDeclaration();  //
-    void VarSection();  //
+    void VarDeclaration();
+    void VarSection();
     void ArgumentList(const std::string& subroutine_name, std::vector<Variable>& args);
     void LocalDeclaration(const std::string& subroutine_name);
     void LocalSection(const std::string& subroutine_name);

@@ -18,17 +18,17 @@ Compiler::~Compiler() {
     delete lexer;
 }
 
-Variable& Compiler::variable(const std::string& var_name) {  // Compiler::?
+Variable& Compiler::variable(const std::string& var_name) {
     return *std::find(variables.begin(), variables.end(), Variable(var_name));
 }
-const Variable& Compiler::variable(const std::string& var_name) const {  // ^
+const Variable& Compiler::variable(const std::string& var_name) const {
     return *std::find(variables.begin(), variables.end(), Variable(var_name));
 }
 
-Subroutine& Compiler::subroutine(const std::string& subroutine_name) { // ^
+Subroutine& Compiler::subroutine(const std::string& subroutine_name) {
     return *std::find(subroutines.begin(), subroutines.end(), Subroutine(subroutine_name));
 }
-const Subroutine& Compiler::subroutine(const std::string& subroutine_name) const { // ^
+const Subroutine& Compiler::subroutine(const std::string& subroutine_name) const {
     return *std::find(subroutines.begin(), subroutines.end(), Subroutine(subroutine_name));
 }
 
@@ -37,14 +37,6 @@ void Compiler::error(const std::string& message) const {
 	std::cerr << message << std::endl;
 	exit(-1);
 }
-
-// void Compiler::write(const std::string& line) const {
-//     std::cout << line << std::endl;
-// }
-
-// const std::string Compiler::current_text() const {
-//     return lexer->YYText();
-// }
 
 void Compiler::read() {
     current_token = (Token)lexer->yylex();
@@ -186,6 +178,7 @@ Type Compiler::String() {
     return Type::STRING;
 }
 
+// Typename := "UINTEGER" | "BOOLEAN" | "DOUBLE" | "CHAR" | "STRING"
 Type Compiler::Typename() {
     if (current_token != Token::KEYWORD) {
         error("(Type) Erreur: Nom de type attendu!");
@@ -208,6 +201,7 @@ Type Compiler::Typename() {
     return type;
 }
 
+// Constant := Number | Boolean | Float | Character | String
 Type Compiler::Constant() {
     Type return_type;
 	switch (current_token) {
@@ -232,6 +226,7 @@ Type Compiler::Constant() {
     return return_type;
 }
 
+// FunctionCall := Identifier "(" [Expression {"," Expression}] ")"
 Type Compiler::FunctionCall(const std::string& function_name) {
 	if (current_token != Token::LPARENT) {
 		error("(FunctionCall) Erreur: Symbole `(` attendu!");
@@ -306,6 +301,7 @@ Type Compiler::FunctionCall(const std::string& function_name) {
 	return subroutine(function_name).get_return_type();
 }
 
+// ProcedureCall := Identifier "(" [Expression {"," Expression}] ")"
 void Compiler::ProcedureCall(const std::string& procedure_name) {
 	if (current_token != Token::LPARENT) {
 		error("(ProcedureCall) Erreur: Symbole `(` attendu!");
@@ -379,6 +375,7 @@ void Compiler::ProcedureCall(const std::string& procedure_name) {
 	std::cout << "\taddq\t$" << 8 * args_number << ", %rsp" << std::endl;
 }
 
+// Factor := "!" Factor | "(" Expression ")" | Identifier | Constant
 Type Compiler::Factor() {
 	Type return_type;
 	if (current_token == Token::NOT) {
@@ -410,6 +407,7 @@ Type Compiler::Factor() {
 	return return_type;
 }
 
+// MultiplicativeOperator := "*" | "/" | "%" | "&&"
 Opmul Compiler::MultiplicativeOperator() {
 	Opmul opmul;
 	if (strcmp("*", lexer->YYText()) == 0) {
@@ -427,6 +425,7 @@ Opmul Compiler::MultiplicativeOperator() {
 	return opmul;
 }
 
+// Term := Factor {MultiplicativeOperator Factor}
 Type Compiler::Term() {
 	Type return_type = Factor();
 
@@ -536,6 +535,7 @@ Type Compiler::Term() {
 	return return_type;
 }
 
+// AdditiveOperator := "+" | "-" | "||".
 Opadd Compiler::AdditiveOperator() {
 	Opadd opadd;
 	if (strcmp("+", lexer->YYText()) == 0) {
@@ -551,6 +551,7 @@ Opadd Compiler::AdditiveOperator() {
 	return opadd;
 }
 
+// SimpleExpression := Term {AdditiveOperator Term}
 Type Compiler::SimpleExpression(){
 	Type return_type = Term();
 
@@ -659,6 +660,7 @@ Type Compiler::SimpleExpression(){
 	return return_type;
 }
 
+// RelationalOperator := "==" | "!=" | "<" | ">" | "<=" | ">="  
 Oprel Compiler::RelationalOperator() {
 	Oprel oprel;
 	if(strcmp("==", lexer->YYText()) == 0) {
@@ -680,6 +682,7 @@ Oprel Compiler::RelationalOperator() {
 	return oprel;
 }
 
+// Expression := SimpleExpression [RelationalOperator SimpleExpression]
 Type Compiler::Expression() {
 	Type return_type = SimpleExpression();
 
@@ -766,6 +769,7 @@ Type Compiler::Expression() {
 	return return_type;
 }
 
+// BlockStatement := "BEGIN" Statement {";" Statement} "END"
 void Compiler::BlockStatement() {
 	read_keyword("BEGIN");
 	Statement();
@@ -776,6 +780,7 @@ void Compiler::BlockStatement() {
 	read_keyword("END");
 }
 
+// AssignmentStatement := Identifier ":=" Expression
 void Compiler::AssignmentStatement() {
 	if (current_token != Token::ID) {
 		error("(AssignmentStatement) Erreur: Identifiant attendu!");
@@ -869,6 +874,7 @@ void Compiler::AssignmentStatement() {
 	std::cout << output << std::endl;
 }
 
+// IfStatement := "IF" Expression "THEN" Statement ["ELSE" Statement]
 void Compiler::IfStatement() {
 	unsigned long long tag = ++tag_number;
 
@@ -896,6 +902,7 @@ void Compiler::IfStatement() {
 	std::cout << "EndIf" << tag << ":" << std::endl;
 }
 
+// WhileStatement := "WHILE" Expression "DO" Statement
 void Compiler::WhileStatement() {
 	unsigned long long tag = ++tag_number;
 
@@ -915,6 +922,7 @@ void Compiler::WhileStatement() {
 	std::cout << "EndWhile" << tag << ":" << std::endl;
 }
 
+// RepeatStatement := "REPEAT" Statement "UNTIL" Expression
 void Compiler::RepeatStatement() {
 	unsigned long long tag = ++tag_number;
 
@@ -1178,7 +1186,6 @@ Type Compiler::CaseLabelList() {
 }
 
 // CaseElement := CaseLabelList ":" Statement
-// Paramètre - endTagNumber: tous les cas ont le même numéro d'étiquette pour la fin du CASE.
 Type Compiler::CaseElement(unsigned long long endTagNumber) {
 	unsigned long long tag = tag_number;  // numéro d'étiquette du cas actuel
 
@@ -1265,6 +1272,7 @@ void Compiler::Statement() {
 	}
 }
 
+// VarDeclaration := Identifier {"," Identifier} ":" Type
 void Compiler::VarDeclaration() {
 	if (current_token != Token::ID) {
 		error("(VarDeclaration) Erreur: Identifiant attendu!");
@@ -1338,6 +1346,7 @@ void Compiler::VarDeclaration() {
 	}
 }
 
+// VarSection := "VAR" VarDeclaration {";" VarDeclaration}
 void Compiler::VarSection() {
 	read_keyword("VAR");
 	VarDeclaration();
@@ -1347,6 +1356,7 @@ void Compiler::VarSection() {
 	}
 }
 
+// ArgumentList := Identifier {"," Identifier} ":" Type
 void Compiler::ArgumentList(const std::string& subroutine_name, std::vector<Variable>& args) {
 	if (current_token != Token::ID) {
 		error("(ArgumentList) Erreur: Identifiant attendu!");
@@ -1389,6 +1399,7 @@ void Compiler::ArgumentList(const std::string& subroutine_name, std::vector<Vari
 	}
 }
 
+// LocalDeclaration := Identifier {"," Identifier} ":" TYPE
 void Compiler::LocalDeclaration(const std::string& subroutine_name) {
 	if (current_token != Token::ID) {
 		error("(LocalVarDeclaration) Erreur: Identifiant attendu!");
@@ -1435,6 +1446,7 @@ void Compiler::LocalDeclaration(const std::string& subroutine_name) {
 	}
 }
 
+// LocalSection := "VAR" LocalVarDeclaration {";" LocalVarDeclaration}
 void Compiler::LocalSection(const std::string& subroutine_name) {
 	read_keyword("VAR");
 	LocalDeclaration(subroutine_name);
@@ -1444,6 +1456,7 @@ void Compiler::LocalSection(const std::string& subroutine_name) {
 	}
 }
 
+// Function := "FUNCTION" Identifier "(" [ArgumentList {";" ArgumentList}] ")" ":" Type [[LocalVarSection] BlockStatement]
 void Compiler::Function() {
 	read_keyword("FUNCTION");
 
@@ -1527,6 +1540,7 @@ void Compiler::Function() {
 	}
 }
 
+// FunctionSection := Function {";" Function}
 void Compiler::FunctionSection() {
 	Function();
 	while (current_token == Token::SEMICOLON) {
@@ -1535,6 +1549,7 @@ void Compiler::FunctionSection() {
 	}
 }
 
+// Procedure := "PROCEDURE" Identifier "(" [ArgumentList {";" ArgumentList}] ")" [[LocalVarSection] BlockStatement]
 void Compiler::Procedure() {
 	read_keyword("PROCEDURE");
 
@@ -1608,6 +1623,7 @@ void Compiler::Procedure() {
 	}
 }
 
+// ProcedureSection := Procedure {";" Procedure}
 void Compiler::ProcedureSection() {
 	Procedure();
 	while (current_token == Token::SEMICOLON) {
@@ -1616,6 +1632,7 @@ void Compiler::ProcedureSection() {
 	}
 }
 
+// Program := "PROGRAM" Identifier ";" [VarSection "."] [FunctionSection "."] [ProcedureSection "."] BlockStatement "."
 void Compiler::Program() {
 	std::cout << "# This code was produced by VICTOR's Vcompiler for Vascal. <3" << std::endl;
 
@@ -1640,7 +1657,8 @@ void Compiler::Program() {
 		read();
 	}
 
-	std::cout << "\t.text" << std::endl;
+	std::cout << "\t.text"    << std::endl;
+	std::cout << "\t.align 8" << std::endl;
 
 	if (current_token == Token::KEYWORD && strcmp("FUNCTION", lexer->YYText()) == 0) {
 		FunctionSection();
