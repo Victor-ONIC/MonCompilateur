@@ -943,6 +943,7 @@ void AssignmentStatement() {
 				std::cout << "\tfild\t(%rsp)" << std::endl;
 				std::cout << "\tfstpl\t(%rsp)" << std::endl;
 			}
+			break;
 		case STRING:
 			if (exprType != STRING) {
 				Error("(AssignmentStatement) Erreur: Impossible d'assigner le type `" + typeString[exprType] + "` au type `STRING`!");

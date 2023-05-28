@@ -1,25 +1,10 @@
-// tokeniser.h : shared definition for tokeniser.l and compilateur.cpp
+#ifndef TOKENISER_H_
+#define TOKENISER_H_
 
-enum TOKEN {
-    FEOF,
-    UNKNOWN,
-    NUMBER,
-    ID,
-    STRINGCONST,
-    LBRACKET,
-    RBRACKET,
-    LPARENT,
-    RPARENT,
-    COMMA, 
-    SEMICOLON,
-    DOT,
-    ADDOP,
-    MULOP,
-    RELOP,
-    NOT,
-    ASSIGN,
-    KEYWORD,
-    COLON,
-    FLOATCONST,
-    CHARCONST
+enum class Token {
+    FEOF, UNKNOWN, NUMBER, ID, STRINGCONST, LBRACKET, RBRACKET, LPARENT,
+    RPARENT, COMMA, SEMICOLON, DOT, ADDOP, MULOP, RELOP, NOT, ASSIGN,
+    KEYWORD, COLON, FLOATCONST, CHARCONST
 };
+
+#endif

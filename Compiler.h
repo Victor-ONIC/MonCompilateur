@@ -8,9 +8,10 @@
 #include <sstream>
 #include <algorithm>
 #include <FlexLexer.h>
-#include "Variable.h"
 #include "Subroutine.h"
+#include "Variable.h"
 #include "tokeniser.h"
+#include "main.h"
 
 class Compiler {
 private:
@@ -30,10 +31,10 @@ private:
     bool in_subroutine;
     std::string current_subroutine;
 
-    Variable& get_variable(const std::string& name);
-    const Variable& get_variable(const std::string& name) const; // used?
-    Subroutine& get_subroutine(const std::string& name);
-    const Subroutine& get_subroutine(const std::string& name) const;
+    Variable& variable(const std::string& var_name);
+    const Variable& variable(const std::string& var_name) const; // used?
+    Subroutine& subroutine(const std::string& subroutine_name);
+    const Subroutine& subroutine(const std::string& subroutine_name) const;
 
     void error(const std::string& message) const;
     // void write(const std::string& line) const;
@@ -42,10 +43,10 @@ private:
     void read_keyword(const std::string& keyword);
 
     bool is_integral(const Type& type) const;
-    bool is_var_declared(const std::string& name) const;
-    bool is_subroutine_declared(const std::string& name) const;
-    bool is_subroutine_defined(const std::string& name) const;
-    bool is_argument(const std::string& name, const std::string& subroutine) const;  
+    bool is_var_declared(const std::string& var_name) const;
+    bool is_subroutine_declared(const std::string& subroutine_name) const;
+    bool is_subroutine_defined(const std::string& subroutine_name) const;
+    bool is_argument(const std::string& name, const std::string& subroutine_name) const;  
 
     Type Identifier();
     Type Number();
@@ -55,8 +56,9 @@ private:
     Type String();
     Type Typename();
     Type Constant();
-    Type FunctionCall(const std::string& functionName);
-    void ProcedureCall(const std::string& procedureName);
+
+    Type FunctionCall(const std::string& function_name);
+    void ProcedureCall(const std::string& procedure_name);
     Type Factor();
     Opmul MultiplicativeOperator();
     Type Term();
@@ -64,22 +66,25 @@ private:
     Type SimpleExpression();
     Oprel RelationalOperator();
     Type Expression();
+
     void BlockStatement();
     void AssignmentStatement();
     void IfStatement();
     void WhileStatement();
     void RepeatStatement();
     void ForStatement();
-    void DisplayStatement();
+    void DisplayStatement();    //
+    void DisplaylnStatement();  //
     Type CaseLabelList();
     Type CaseElement(unsigned long long end_tag_number);
     void CaseStatement();
     void Statement();
+
     void VarDeclaration();  //
     void VarSection();  //
-    void ArgumentList(const std::string& subroutine, std::vector<Variable>& args);
-    void LocalDeclaration(const std::string& subroutine);
-    void LocalSection(const std::string& subroutine);
+    void ArgumentList(const std::string& subroutine_name, std::vector<Variable>& args);
+    void LocalDeclaration(const std::string& subroutine_name);
+    void LocalSection(const std::string& subroutine_name);
     void Function();
     void FunctionSection();
     void Procedure();

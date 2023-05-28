@@ -117,28 +117,28 @@ unknown [^\"A-Za-z0-9 \n\r\t\(\)\<\>\=\!\%\&\|\}\-\;\.]+
 
 
 
-{stringconst}	return STRINGCONST;
-{addop}		return ADDOP;
-{mulop}		return MULOP;
-{relop}		return RELOP;
-{float} 	return FLOATCONST;
-{number}	return NUMBER;
-{keyword}	return KEYWORD;
-{id}		return ID;
-{character} 	return CHARCONST;
-"["			return LBRACKET;
-"]"			return RBRACKET;
-","			return COMMA;
-";"			return SEMICOLON;
-":"         return COLON;
-"."			return DOT;
-":="		return ASSIGN;
-"("			return LPARENT;
-")"			return RPARENT;
-"!"			return NOT;
+{stringconst}	return (int)Token::STRINGCONST;
+{addop}		return (int)Token::ADDOP;
+{mulop}		return (int)Token::MULOP;
+{relop}		return (int)Token::RELOP;
+{float} 	return (int)Token::FLOATCONST;
+{number}	return (int)Token::NUMBER;
+{keyword}	return (int)Token::KEYWORD;
+{id}		return (int)Token::ID;
+{character} 	return (int)Token::CHARCONST;
+"["			return (int)Token::LBRACKET;
+"]"			return (int)Token::RBRACKET;
+","			return (int)Token::COMMA;
+";"			return (int)Token::SEMICOLON;
+":"         return (int)Token::COLON;
+"."			return (int)Token::DOT;
+":="		return (int)Token::ASSIGN;
+"("			return (int)Token::LPARENT;
+")"			return (int)Token::RPARENT;
+"!"			return (int)Token::NOT;
 {ws}    	// Skip whitespace characters: do nothing.
-{unknown}	return UNKNOWN;
-<<EOF>>		return FEOF;
+{unknown}	return (int)Token::UNKNOWN;
+<<EOF>>		return (int)Token::FEOF;
 
 "(*"    {
 

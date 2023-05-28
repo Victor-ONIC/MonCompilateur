@@ -1,11 +1,13 @@
 PROGRAM addition;
 
-PROCEDURE func(a, b : UINTEGER)
+FUNCTION factorial(n : UINTEGER) : UINTEGER
 BEGIN
-    DISPLAYLN a;
-    DISPLAYLN b
+    IF n == 0 THEN
+        factorial := 1
+    ELSE
+        factorial := n * factorial(n - 1)
 END.
 
 BEGIN
-    func(1, 9999)
+    DISPLAYLN factorial(10);
 END.
