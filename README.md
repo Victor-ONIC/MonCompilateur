@@ -144,3 +144,10 @@ Cette fonctionnalité a été ajoutée afin de pouvoir faire
 
 avec `a` de type UINTEGER.
 
+<br>
+
+# Au cas-où
+
+La branche main a une version sans classes, si vous préférez.\
+
+https://github.com/Victor-ONIC/MonCompilateur
