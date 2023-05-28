@@ -18,13 +18,13 @@ private:
     yyFlexLexer* lexer;
     Token current_token;
     unsigned long long tag_number;
-    std::stringstream internal_data;
 
     std::vector<Variable> variables;
     std::vector<Subroutine> subroutines;
 
     bool in_subroutine;
     std::string current_subroutine;
+    std::stringstream internal_data;
 
     Variable& variable(const std::string& var_name);
     const Variable& variable(const std::string& var_name) const;

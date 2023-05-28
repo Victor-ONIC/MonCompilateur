@@ -14,9 +14,6 @@ const std::string TYPE_STRING[] = {
 	"UINTEGER", "BOOLEAN", "DOUBLE", "CHAR", "STRING"
 };
 
-// Pour chaque FormatString, doit-on l'afficher ?
-extern std::map<std::string, bool> FS;
-
 enum class Oprel {
     EQU, DIFF, INF, SUP, INFE, SUPE, WTFR
 };

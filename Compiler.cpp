@@ -134,7 +134,7 @@ Type Compiler::Boolean() {
     if (current_token != Token::KEYWORD) {
         error("(Boolean) Erreur: Mot clé `TRUE` ou `FALSE` attendu!");
     }
-    if (strcmp("TRUE", lexer->YYText()) != 0) {
+    if (strcmp("TRUE", lexer->YYText()) == 0) {
         std::cout << "\tpushq\t$0xFFFFFFFFFFFFFFFF" << std::endl;
     } else {
         std::cout << "\tpushq\t$0x0" << std::endl;
@@ -384,7 +384,7 @@ Type Compiler::Factor() {
 		Factor();
 		std::cout << "\tcmpq\t$0, (%rsp)" 			   << std::endl;
 		std::cout << "\tje\tFaux" << tag               << std::endl;
-		std::cout << "\tmovq\t$FFFFFFFFFFFFFFFF, %rax" << std::endl;
+		std::cout << "\tmovq\t$0xFFFFFFFFFFFFFFFF, %rax" << std::endl;
 		std::cout << "\tjmp\tSuite" << tag			   << std::endl;
 		std::cout << "Faux" << tag << ":" 			   << std::endl;
 		std::cout << "\tmovq\t$0, %rax"                << std::endl;
@@ -474,7 +474,7 @@ Type Compiler::Term() {
 			case Opmul::AND:
 				std::cout << "\tcmpq\t$0, %rax"                << std::endl;
 				std::cout << "\tje\tFaux" << tag               << std::endl;
-				std::cout << "\tmovq\t$FFFFFFFFFFFFFFFF, %rax" << std::endl;
+				std::cout << "\tmovq\t$0xFFFFFFFFFFFFFFFF, %rax" << std::endl;
 				std::cout << "\tjmp\tSuite" << tag             << std::endl;
 				std::cout << "Faux" << tag << ":"              << std::endl;
 				std::cout << "\tmovq\t$0, %rax"                << std::endl;
@@ -483,7 +483,7 @@ Type Compiler::Term() {
 				tag = ++tag_number;
 				std::cout << "\tcmpq\t$0, %rbx" 			   << std::endl;
 				std::cout << "\tje\tFaux" << tag			   << std::endl;
-				std::cout << "\tmovq\t$FFFFFFFFFFFFFFFF, %rbx" << std::endl;
+				std::cout << "\tmovq\t$0xFFFFFFFFFFFFFFFF, %rbx" << std::endl;
 				std::cout << "\tjmp\tSuite" << tag			   << std::endl;
 				std::cout << "Faux" << tag << ":" 			   << std::endl;
 				std::cout << "\tmovq\t$0, %rbx" 			   << std::endl;
@@ -605,7 +605,7 @@ Type Compiler::SimpleExpression(){
 			case Opadd::OR:
 				std::cout << "\tcmpq\t$0, %rax" 			   << std::endl;
 				std::cout << "\tje\tFaux" << tag			   << std::endl;
-				std::cout << "\tmovq\t$FFFFFFFFFFFFFFFF, %rax" << std::endl;
+				std::cout << "\tmovq\t$0xFFFFFFFFFFFFFFFF, %rax" << std::endl;
 				std::cout << "\tjmp\tSuite" << tag			   << std::endl;
 				std::cout << "Faux" << tag << ":" 			   << std::endl;
 				std::cout << "\tmovq\t$0, %rax" 			   << std::endl;
@@ -614,7 +614,7 @@ Type Compiler::SimpleExpression(){
 				tag = ++tag_number;
 				std::cout << "\tcmpq\t$0, %rbx" 			   << std::endl;
 				std::cout << "\tje\tFaux" << tag			   << std::endl;
-				std::cout << "\tmovq\t$FFFFFFFFFFFFFFFF, %rbx" << std::endl;
+				std::cout << "\tmovq\t$0xFFFFFFFFFFFFFFFF, %rbx" << std::endl;
 				std::cout << "\tjmp\tSuite" << tag			   << std::endl;
 				std::cout << "Faux" << tag << ":" 			   << std::endl;
 				std::cout << "\tmovq\t$0, %rbx" 			   << std::endl;
@@ -805,7 +805,7 @@ void Compiler::AssignmentStatement() {
 	bool found = false;
 	std::string output;
 	if (in_subroutine) {
-		const Subroutine& this_subroutine = subroutine(id);
+		const Subroutine& this_subroutine = subroutine(current_subroutine);
 		if (current_subroutine == id && this_subroutine.get_return_type() != Type::WTFT) {
 			// Cas spécial: assignement de la valeur de retour d'une fonction (pas de procédures donc).
 			found = true;
@@ -1015,10 +1015,6 @@ void Compiler::DisplayStatement() {
 	Type expr_type = Expression();
 	switch (expr_type) {
 		case Type::UINTEGER:
-			if (!FS["LLU"]) {
-				FS["LLU"] = true;
-				internal_data << "FSLLU:\n\t.string \"%llu\"" << std::endl;
-			}
 			std::cout << "\tpopq\t%rdx"             << std::endl;
 			std::cout << "\tmovq\t$FSLLU, %rsi"     << std::endl;
 			std::cout << "\tmovl\t$0, %eax"         << std::endl;
@@ -1026,11 +1022,6 @@ void Compiler::DisplayStatement() {
 			std::cout << "\tcall\t__printf_chk@PLT" << std::endl;
 			break;
 		case Type::BOOLEAN: {
-			if (!FS["B"]) {
-				FS["B"] = true;
-				internal_data << "FSTRUE:\n\t.string \"TRUE\"" << std::endl;
-				internal_data << "FSFALSE:\n\t.string \"FALSE\"" << std::endl;
-			}
 			unsigned long long tag = ++tag_number;
 			std::cout << "\tpopq\t%rdx"             << std::endl;
 			std::cout << "\tcmpq\t$0, %rdx"         << std::endl;
@@ -1046,10 +1037,6 @@ void Compiler::DisplayStatement() {
 			break;
 		}
 		case Type::DOUBLE:
-			if (!FS["F"]) {
-				FS["F"] = true;
-				internal_data << "FSF:\n\t.string \"%lf\"" << std::endl;
-			}
 			std::cout << "\tmovsd\t(%rsp), %xmm0"   << std::endl;
 			std::cout << "\tmovq\t$FSF, %rsi"       << std::endl;
 			std::cout << "\tmovl\t$1, %eax"         << std::endl;
@@ -1058,10 +1045,6 @@ void Compiler::DisplayStatement() {
 			std::cout << "\taddq\t$8, %rsp"         << std::endl;
 			break;
 		case Type::CHAR:
-			if (!FS["C"]) {
-				FS["C"] = true;
-				internal_data << "FSC:\n\t.string \"%c\"" << std::endl;
-			}
 			std::cout << "\tpopq\t%rdx"             << std::endl;
 			std::cout << "\tmovq\t$FSC, %rsi"       << std::endl;
 			std::cout << "\tmovl\t$0, %eax"         << std::endl;
@@ -1069,10 +1052,6 @@ void Compiler::DisplayStatement() {
 			std::cout << "\tcall\t__printf_chk@PLT" << std::endl;
 			break;
 		case Type::STRING:
-			if (!FS["S"]) {
-				FS["S"] = true;
-				internal_data << "FSS:\n\t.string \"%s\"" << std::endl;
-			}
 			std::cout << "\tpopq\t%rdx"             << std::endl;
 			std::cout << "\tmovq\t$FSS, %rsi"       << std::endl;
 			std::cout << "\tmovl\t$0, %eax"         << std::endl;
@@ -1091,10 +1070,6 @@ void Compiler::DisplaylnStatement() {
 	Type expr_type = Expression();
 	switch (expr_type) {
 		case Type::UINTEGER:
-			if (!FS["LLUln"]) {
-				FS["LLUln"] = true;
-				internal_data << "FSLLUln:\n\t.string \"%llu\\n\"" << std::endl;
-			}
 			std::cout << "\tpopq\t%rdx"             << std::endl;
 			std::cout << "\tmovq\t$FSLLUln, %rsi"   << std::endl;
 			std::cout << "\tmovl\t$0, %eax"         << std::endl;
@@ -1102,11 +1077,6 @@ void Compiler::DisplaylnStatement() {
 			std::cout << "\tcall\t__printf_chk@PLT" << std::endl;
 			break;
 		case Type::BOOLEAN: {
-			if (!FS["Bln"]) {
-				FS["Bln"] = true;
-				internal_data << "FSTRUEln:\n\t.string \"TRUE\\n\"" << std::endl;
-				internal_data << "FSFALSEln:\n\t.string \"FALSE\\n\"" << std::endl;
-			}
 			unsigned long long tag = ++tag_number;
 			std::cout << "\tpopq\t%rdx"             << std::endl;
 			std::cout << "\tcmpq\t$0, %rdx"         << std::endl;
@@ -1122,10 +1092,6 @@ void Compiler::DisplaylnStatement() {
 			break;
 		}
 		case Type::DOUBLE:
-			if (!FS["Fln"]) {
-				FS["Fln"] = true;
-				internal_data << "FSFln:\n\t.string \"%lf\\n\"" << std::endl;
-			}
 			std::cout << "\tmovsd\t(%rsp), %xmm0"   << std::endl;
 			std::cout << "\tmovq\t$FSFln, %rsi"     << std::endl;
 			std::cout << "\tmovl\t$1, %eax"         << std::endl;
@@ -1134,10 +1100,6 @@ void Compiler::DisplaylnStatement() {
 			std::cout << "\taddq\t$8, %rsp"         << std::endl;
 			break;
 		case Type::CHAR:
-			if (!FS["Cln"]) {
-				FS["Cln"] = true;
-				internal_data << "FSCln:\n\t.string \"%c\\n\"" << std::endl;
-			}
 			std::cout << "\tpopq\t%rdx"             << std::endl;
 			std::cout << "\tmovq\t$FSCln, %rsi"     << std::endl;
 			std::cout << "\tmovl\t$0, %eax"         << std::endl;
@@ -1145,10 +1107,6 @@ void Compiler::DisplaylnStatement() {
 			std::cout << "\tcall\t__printf_chk@PLT" << std::endl;
 			break;
 		case Type::STRING:
-			if (!FS["Sln"]) {
-				FS["Sln"] = true;
-				internal_data << "FSSln:\n\t.string \"%s\\n\"" << std::endl;
-			}
 			std::cout << "\tpopq\t%rdx"             << std::endl;
 			std::cout << "\tmovq\t$FSSln, %rsi"     << std::endl;
 			std::cout << "\tmovl\t$0, %eax"         << std::endl;
@@ -1647,6 +1605,19 @@ void Compiler::Program() {
 		error("(Program) Erreur: Symbole `;` attendu!");
 	}
 	read();
+
+	std::cout << "FSLLU:\n\t.string \"%llu\"" << std::endl;
+	std::cout << "FSTRUE:\n\t.string \"TRUE\"" << std::endl;
+	std::cout << "FSFALSE:\n\t.string \"FALSE\"" << std::endl;
+	std::cout << "FSF:\n\t.string \"%lf\"" << std::endl;
+	std::cout << "FSC:\n\t.string \"%c\"" << std::endl;
+	std::cout << "FSS:\n\t.string \"%s\"" << std::endl;
+	std::cout << "FSLLUln:\n\t.string \"%llu\\n\"" << std::endl;
+	std::cout << "FSTRUEln:\n\t.string \"TRUE\\n\"" << std::endl;
+	std::cout << "FSFALSEln:\n\t.string \"FALSE\\n\"" << std::endl;
+	std::cout << "FSFln:\n\t.string \"%lf\\n\"" << std::endl;
+	std::cout << "FSCln:\n\t.string \"%c\\n\"" << std::endl;
+	std::cout << "FSSln:\n\t.string \"%s\\n\"" << std::endl;
 
 	if (current_token == Token::KEYWORD && strcmp("VAR", lexer->YYText()) == 0) {
 		std::cout << "\t.data" << std::endl;
