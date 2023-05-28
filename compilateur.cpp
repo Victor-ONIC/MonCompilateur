@@ -1987,6 +1987,7 @@ On différencie char et string par simple et double quotes.
 Les format strings ont un \n à la fin car l'instruction DISPLAY sert à afficher une valeur en particulier, donc sur sa propre ligne.
 Les variables globales sont automatiquement initialisées à 0.
 On ne peut pas avoir de strings vides.
+Plus de problème d'ordre des fonctions avec une classe.
 */
 
 // TESTS
